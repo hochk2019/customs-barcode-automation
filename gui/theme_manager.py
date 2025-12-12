@@ -317,9 +317,26 @@ class ThemeManager:
             troughcolor=colors['bg_primary']
         )
 
+    # Branding colors that should NOT be changed by theme switching
+    PROTECTED_COLORS = {
+        '#0d0d0d', '#1a1a1a', '#2d2d44',  # Dark backgrounds (branding)
+        '#ffd700', '#d4a853', '#d4af37', '#c9a227',  # Gold colors
+        '#4fc3f7',  # Accent blue
+        '#ffffff',  # White text on dark backgrounds
+        '#888888',  # Gray text
+    }
+    
+    def _is_protected_color(self, color: str) -> bool:
+        """Check if a color is a protected branding color."""
+        if not color:
+            return False
+        color_lower = str(color).lower()
+        return color_lower in self.PROTECTED_COLORS
+    
     def _update_widget_colors(self, widget: tk.Widget, colors: Dict[str, str]) -> None:
         """
         Recursively update colors for tk widgets (non-ttk).
+        Preserves branding colors (header, footer, etc.)
         
         Args:
             widget: Widget to update
@@ -331,32 +348,45 @@ class ThemeManager:
             # Update tk.Frame
             if widget_class == 'Frame':
                 try:
-                    widget.configure(bg=colors['bg_primary'])
+                    current_bg = str(widget.cget('bg')).lower()
+                    # Don't change frames with branding background colors
+                    if not self._is_protected_color(current_bg):
+                        widget.configure(bg=colors['bg_primary'])
                 except tk.TclError:
                     pass
             
             # Update tk.Label
             elif widget_class == 'Label':
                 try:
-                    # Check if it's a special label (gold, accent, etc.)
                     current_fg = str(widget.cget('fg')).lower()
-                    # Don't change branded colors (gold, accent colors)
-                    if current_fg not in ('#d4af37', '#c9a227', '#ffd700', '#4fc3f7'):
+                    current_bg = str(widget.cget('bg')).lower()
+                    
+                    # Don't change labels with branding colors (either fg or bg)
+                    if self._is_protected_color(current_bg):
+                        # This is a branding label, don't change anything
+                        pass
+                    elif self._is_protected_color(current_fg):
+                        # Has branding foreground, only update background if not protected
+                        widget.configure(bg=colors['bg_primary'])
+                    else:
+                        # Regular label, update both
                         widget.configure(
                             bg=colors['bg_primary'],
                             fg=colors['text_primary']
                         )
-                    else:
-                        widget.configure(bg=colors['bg_primary'])
                 except tk.TclError:
                     pass
             
             # Update tk.Button
             elif widget_class == 'Button':
                 try:
-                    # Check if it's a branded button (gold background)
                     current_bg = str(widget.cget('bg')).lower()
-                    if current_bg not in ('#d4af37', '#c9a227', '#ffd700'):
+                    current_fg = str(widget.cget('fg')).lower()
+                    
+                    # Don't change buttons with branding colors
+                    if self._is_protected_color(current_bg) or self._is_protected_color(current_fg):
+                        pass  # Keep branding buttons unchanged
+                    else:
                         widget.configure(
                             bg=colors['bg_secondary'],
                             fg=colors['text_primary'],
