@@ -1,0 +1,42 @@
+# Database connectivity
+pyodbc>=4.0.39
+
+# Web automation
+selenium>=4.15.0
+
+# HTTP client
+requests>=2.31.0
+
+# Scheduling
+APScheduler>=3.10.4
+
+# Encryption
+cryptography>=41.0.7
+
+# Property-based testing
+hypothesis>=6.92.0
+
+# Unit testing
+pytest>=7.4.3
+pytest-cov>=4.1.0
+
+# Additional utilities
+python-dateutil>=2.8.2
+
+# Calendar widget for date picking
+tkcalendar>=1.6.1
+
+# Image processing for logo/branding
+Pillow>=10.0.0
+
+# PDF generation for barcode documents
+reportlab>=4.0.0
+
+# Barcode generation
+python-barcode>=0.15.0
+
+# Desktop notifications
+plyer>=2.1.0
+
+# Build tools (optional - only needed for creating executable)
+# pyinstaller>=5.13.0

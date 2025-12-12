@@ -1,0 +1,113 @@
+[Database]
+server = localhost
+database = ECUS5VNACCS
+username = sa
+password = 1
+timeout = 30
+
+[BarcodeService]
+# API endpoint for barcode service (V2.0: port 8086 is internal, use without port)
+api_url = http://103.248.160.25/WS_Container/QRCode.asmx
+
+# Web URLs for barcode retrieval
+primary_web_url = https://pus.customs.gov.vn/faces/ContainerBarcode
+# backup_web_url is deprecated in V2.0 (has CAPTCHA)
+backup_web_url = https://pus1.customs.gov.vn/BarcodeContainer/BarcodeContainer.aspx
+
+# V2.0: Barcode retrieval method
+# Options: api, web, auto
+# - api: Use SOAP API to get data and render PDF locally (faster, recommended)
+# - web: Use web scraping from pus.customs.gov.vn
+# - auto: Try API first, fallback to web if failed (default)
+retrieval_method = auto
+
+# V1.1: PDF file naming format
+# Options: tax_code, invoice, bill_of_lading
+# - tax_code: {tax_code}_{declaration_number}.pdf (default)
+# - invoice: {invoice_number}_{declaration_number}.pdf
+# - bill_of_lading: {bill_of_lading}_{declaration_number}.pdf
+# Note: Falls back to tax_code format if selected field is empty
+pdf_naming_format = tax_code
+
+# Timeout settings (in seconds)
+# Legacy field, kept for backward compatibility
+timeout = 30
+# Timeout for API calls
+api_timeout = 30
+# Timeout for web scraping operations
+web_timeout = 60
+
+# Retry settings
+# Maximum number of retry attempts
+max_retries = 1
+
+# Performance optimization
+# Reuse HTTP sessions across requests for better performance
+session_reuse = true
+
+# Output directory for downloaded barcode PDFs
+# Leave empty to use default (C:\CustomsBarcodes)
+output_path =
+
+[Application]
+output_directory = C:\CustomsBarcodes
+polling_interval = 300
+max_retries = 3
+retry_delay = 5
+operation_mode = automatic
+
+[UI]
+# Feature flags for UI enhancements
+# Enable calendar date picker widget (requires tkcalendar)
+enable_calendar_picker = true
+
+# Enable searchable/filterable company dropdown
+enable_company_search = true
+
+# Enable output directory selection UI
+enable_output_directory_selector = true
+
+# V1.3: Theme setting (light or dark)
+theme = light
+
+# V1.3: Desktop notifications
+# Show desktop notifications when batch download completes or errors occur
+notifications_enabled = true
+
+# V1.3: Sound notifications
+# Play sound when batch download completes
+sound_enabled = true
+
+# V1.3: Batch download limit (1-50, default 20)
+# Maximum number of declarations to download in a single batch
+batch_limit = 20
+
+# V1.3: Window state persistence
+# Window position and size (set to -1 for centered)
+window_x = -1
+window_y = -1
+window_width = 1200
+window_height = 850
+
+[Logging]
+log_level = INFO
+log_file = logs/app.log
+max_log_size = 10485760
+backup_count = 5
+
+[Update]
+# GitHub repository for auto-update (format: owner/repo)
+github_repo = hochk2019/customs-barcode-automation
+
+# Skipped versions (comma-separated, e.g., 1.2.4,1.2.5)
+# Versions in this list will not trigger update notifications
+skipped_versions = 
+
+# Pending installer path (set automatically when user chooses "install later")
+pending_installer = 
+
+# Last update check timestamp (set automatically)
+last_check = 
+
+# Check interval in hours (0 = every startup)
+check_interval = 24
