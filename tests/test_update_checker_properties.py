@@ -211,15 +211,15 @@ def test_property_skipped_version_normalization(v):
     assert checker2.is_version_skipped(version_with_V)
 
 
-# Test for response without .exe asset
+# Test for response without supported asset (.zip or .exe)
 @given(
     version=version_tuple,
-    non_exe_extension=st.sampled_from(['.zip', '.tar.gz', '.dmg', '.deb', '.rpm'])
+    unsupported_extension=st.sampled_from(['.tar.gz', '.dmg', '.deb', '.rpm', '.pkg'])
 )
 @settings(max_examples=100)
-def test_property_github_response_no_exe_asset(version, non_exe_extension):
+def test_property_github_response_no_supported_asset(version, unsupported_extension):
     """
-    For any GitHub response without .exe asset, parsing SHALL return None.
+    For any GitHub response without .zip or .exe asset, parsing SHALL return None.
     
     **Feature: github-auto-update, Property 4: GitHub Response Parsing**
     **Validates: Requirements 1.2**
@@ -233,9 +233,9 @@ def test_property_github_response_no_exe_asset(version, non_exe_extension):
         "published_at": "2024-12-12T10:00:00Z",
         "assets": [
             {
-                "name": f"test{non_exe_extension}",
+                "name": f"test{unsupported_extension}",
                 "size": 1000000,
-                "browser_download_url": f"https://github.com/owner/repo/releases/download/{version_str}/test{non_exe_extension}"
+                "browser_download_url": f"https://github.com/owner/repo/releases/download/{version_str}/test{unsupported_extension}"
             }
         ]
     }
@@ -244,4 +244,37 @@ def test_property_github_response_no_exe_asset(version, non_exe_extension):
     update_info = checker._parse_github_response(mock_response)
     
     assert update_info is None, \
-        f"Should return None when no .exe asset found (only {non_exe_extension})"
+        f"Should return None when no .zip or .exe asset found (only {unsupported_extension})"
+
+
+# Test for response with .zip asset (should be supported)
+@given(version=version_tuple)
+@settings(max_examples=50)
+def test_property_github_response_zip_asset(version):
+    """
+    For any GitHub response with .zip asset, parsing SHALL return UpdateInfo.
+    
+    **Feature: github-auto-update, Property 4: GitHub Response Parsing**
+    **Validates: Requirements 1.2**
+    """
+    version_str = version_tuple_to_string(version, with_prefix=True)
+    
+    mock_response = {
+        "tag_name": version_str,
+        "name": f"Version {version_str}",
+        "body": "Test release notes",
+        "published_at": "2024-12-12T10:00:00Z",
+        "assets": [
+            {
+                "name": "CustomsBarcodeAutomation.zip",
+                "size": 50000000,
+                "browser_download_url": f"https://github.com/owner/repo/releases/download/{version_str}/CustomsBarcodeAutomation.zip"
+            }
+        ]
+    }
+    
+    checker = UpdateChecker("0.0.1", "owner/repo")
+    update_info = checker._parse_github_response(mock_response)
+    
+    assert update_info is not None, "Should return UpdateInfo when .zip asset found"
+    assert update_info.download_url.endswith('.zip'), "Download URL should be for .zip file"

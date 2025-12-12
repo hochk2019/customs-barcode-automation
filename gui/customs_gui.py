@@ -406,10 +406,16 @@ class CustomsAutomationGUI:
                         
                         if result == "update_now":
                             download_manager = DownloadManager()
-                            progress_dialog = DownloadProgressDialog(
-                                self.root, 
-                                f"CustomsBarcodeAutomation_{update_info.latest_version}.exe"
-                            )
+                            
+                            # Determine file extension from download URL
+                            download_url = update_info.download_url
+                            if download_url.endswith('.zip'):
+                                file_ext = '.zip'
+                            else:
+                                file_ext = '.exe'
+                            
+                            filename = f"CustomsBarcodeAutomation_{update_info.latest_version}{file_ext}"
+                            progress_dialog = DownloadProgressDialog(self.root, filename)
                             
                             def progress_callback(downloaded, total, speed):
                                 progress = DownloadProgress(downloaded, total, speed)
@@ -418,26 +424,44 @@ class CustomsAutomationGUI:
                             def download_thread():
                                 try:
                                     filepath = download_manager.download_file(
-                                        update_info.download_url,
-                                        f"CustomsBarcodeAutomation_{update_info.latest_version}.exe",
+                                        download_url,
+                                        filename,
                                         update_info.file_size,
                                         progress_callback
                                     )
                                     
                                     self.root.after(0, progress_dialog.close)
                                     
-                                    def show_install_prompt():
-                                        install_dialog = InstallPromptDialog(self.root, filepath)
-                                        install_result = install_dialog.show()
-                                        
-                                        if install_result == "install_now":
+                                    # Handle ZIP extraction
+                                    if download_manager.is_zip_file(filepath):
+                                        try:
+                                            extract_dir = download_manager.extract_zip(filepath)
+                                            # Show message about extracted location
+                                            self.root.after(0, lambda: messagebox.showinfo(
+                                                "Tải xuống hoàn tất",
+                                                f"Đã tải và giải nén phiên bản mới tại:\n{extract_dir}\n\n"
+                                                "Vui lòng đóng ứng dụng và chạy file CustomsAutomation.exe trong thư mục đã giải nén."
+                                            ))
+                                            # Open the extracted folder
                                             import subprocess
-                                            subprocess.Popen([filepath], shell=True)
-                                            self.root.after(500, self.root.destroy)
-                                        else:
-                                            download_manager.save_pending_installer(filepath, self.config_manager)
-                                    
-                                    self.root.after(0, show_install_prompt)
+                                            subprocess.Popen(['explorer', extract_dir])
+                                        except Exception as e:
+                                            self.logger.error(f"Extraction failed: {e}")
+                                            self.root.after(0, lambda: messagebox.showerror("Lỗi", f"Giải nén thất bại: {e}"))
+                                    else:
+                                        # Handle EXE installer
+                                        def show_install_prompt():
+                                            install_dialog = InstallPromptDialog(self.root, filepath)
+                                            install_result = install_dialog.show()
+                                            
+                                            if install_result == "install_now":
+                                                import subprocess
+                                                subprocess.Popen([filepath], shell=True)
+                                                self.root.after(500, self.root.destroy)
+                                            else:
+                                                download_manager.save_pending_installer(filepath, self.config_manager)
+                                        
+                                        self.root.after(0, show_install_prompt)
                                     
                                 except DownloadCancelledError:
                                     self.logger.info("Download cancelled by user")

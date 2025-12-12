@@ -121,20 +121,31 @@ class UpdateChecker:
             release_notes = data.get('body', '')
             published_at = data.get('published_at', '')
             
-            # Find .exe asset
+            # Find downloadable asset (.zip or .exe)
+            # Priority: .zip first (contains full release), then .exe
             assets = data.get('assets', [])
             download_url = ''
             file_size = 0
             
+            # First pass: look for .zip file
             for asset in assets:
                 name = asset.get('name', '')
-                if name.endswith('.exe'):
+                if name.endswith('.zip'):
                     download_url = asset.get('browser_download_url', '')
                     file_size = asset.get('size', 0)
                     break
             
+            # Second pass: look for .exe if no .zip found
             if not download_url:
-                logger.warning("No .exe asset found in release")
+                for asset in assets:
+                    name = asset.get('name', '')
+                    if name.endswith('.exe'):
+                        download_url = asset.get('browser_download_url', '')
+                        file_size = asset.get('size', 0)
+                        break
+            
+            if not download_url:
+                logger.warning("No .zip or .exe asset found in release")
                 return None
             
             return UpdateInfo(

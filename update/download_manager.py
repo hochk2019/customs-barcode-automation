@@ -6,6 +6,7 @@ import logging
 import os
 import tempfile
 import time
+import zipfile
 from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
@@ -194,3 +195,50 @@ class DownloadManager:
             except Exception as e:
                 logger.warning(f"Failed to get pending installer: {e}")
         return None
+    
+    def extract_zip(self, zip_path: str, extract_dir: str = None) -> str:
+        """
+        Extract ZIP file to directory.
+        
+        Args:
+            zip_path: Path to ZIP file
+            extract_dir: Directory to extract to (default: same as ZIP location)
+            
+        Returns:
+            Path to extracted directory
+            
+        Raises:
+            DownloadError: If extraction fails
+        """
+        try:
+            if extract_dir is None:
+                extract_dir = os.path.dirname(zip_path)
+            
+            # Create extraction directory with ZIP filename (without extension)
+            zip_name = os.path.splitext(os.path.basename(zip_path))[0]
+            target_dir = os.path.join(extract_dir, zip_name)
+            
+            logger.info(f"Extracting {zip_path} to {target_dir}")
+            
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(target_dir)
+            
+            logger.info(f"Extraction complete: {target_dir}")
+            return target_dir
+            
+        except zipfile.BadZipFile as e:
+            raise DownloadError(f"Invalid ZIP file: {e}")
+        except Exception as e:
+            raise DownloadError(f"Extraction failed: {e}")
+    
+    def is_zip_file(self, filepath: str) -> bool:
+        """
+        Check if file is a ZIP archive.
+        
+        Args:
+            filepath: Path to file
+            
+        Returns:
+            True if file is a valid ZIP
+        """
+        return filepath.lower().endswith('.zip') and zipfile.is_zipfile(filepath)
