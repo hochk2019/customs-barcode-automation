@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.2.6] - 2024-12-12
+
+### Fixed
+- Fixed version mismatch between main.py and branding.py causing update check to fail
+- Fixed theme manager preserving branding colors when switching themes
+
+### Changed
+- Synchronized APP_VERSION across all modules
+
 ## [1.2.5] - 2024-12-12
 
 ### Changed
