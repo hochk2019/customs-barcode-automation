@@ -1,4 +1,9 @@
-# Changelog - Customs Barcode Automation
+# Changelog
+
+## [1.2.5] - 2024-12-12
+
+### Changed
+- Test version for auto-update feature verification - Customs Barcode Automation
 
 ## Version 1.2.4 - GitHub Auto-Update (December 12, 2024)
 
