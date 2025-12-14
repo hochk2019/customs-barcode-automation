@@ -73,7 +73,7 @@ class StatisticsBar(ttk.Frame):
             container,
             textvariable=self.processed_var,
             font=(ModernStyles.FONT_FAMILY, ModernStyles.FONT_SIZE_NORMAL, "bold"),
-            foreground=ModernStyles.INFO_COLOR
+            style='Info.TLabel'  # Use style for theme support
         )
         self.processed_label.pack(side=tk.LEFT, padx=(0, 15))
         
@@ -88,7 +88,7 @@ class StatisticsBar(ttk.Frame):
             container,
             textvariable=self.retrieved_var,
             font=(ModernStyles.FONT_FAMILY, ModernStyles.FONT_SIZE_NORMAL, "bold"),
-            foreground=ModernStyles.SUCCESS_COLOR
+            style='Success.TLabel'  # Use style for theme support
         )
         self.retrieved_label.pack(side=tk.LEFT, padx=(0, 15))
         
@@ -103,7 +103,7 @@ class StatisticsBar(ttk.Frame):
             container,
             textvariable=self.errors_var,
             font=(ModernStyles.FONT_FAMILY, ModernStyles.FONT_SIZE_NORMAL, "bold"),
-            foreground=ModernStyles.ERROR_COLOR
+            style='Error.TLabel'  # Use style for theme support
         )
         self.errors_label.pack(side=tk.LEFT, padx=(0, 15))
         
@@ -118,7 +118,7 @@ class StatisticsBar(ttk.Frame):
             container,
             textvariable=self.last_run_var,
             font=(ModernStyles.FONT_FAMILY, ModernStyles.FONT_SIZE_NORMAL),
-            foreground=ModernStyles.TEXT_SECONDARY
+            style='Secondary.TLabel'  # Use style for theme support
         )
         self.last_run_label.pack(side=tk.LEFT, padx=(0, 5))
     

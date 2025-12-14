@@ -14,7 +14,7 @@ import os
 import threading
 
 # Application version
-APP_VERSION = "1.2.6"
+APP_VERSION = "1.3.0"
 
 # Import configuration and logging
 from config.configuration_manager import ConfigurationManager, ConfigurationError
@@ -247,7 +247,16 @@ def main():
                         if result == "update_now":
                             # Download update
                             download_manager = DownloadManager()
-                            progress_dialog = DownloadProgressDialog(root, f"CustomsBarcodeAutomation_{update_info.latest_version}.exe")
+                            
+                            # Determine file extension from download URL
+                            download_url = update_info.download_url
+                            if download_url.endswith('.zip'):
+                                file_ext = '.zip'
+                            else:
+                                file_ext = '.exe'
+                            
+                            filename = f"CustomsBarcodeAutomation_{update_info.latest_version}{file_ext}"
+                            progress_dialog = DownloadProgressDialog(root, filename)
                             
                             def progress_callback(downloaded, total, speed):
                                 progress = DownloadProgress(downloaded, total, speed)
@@ -256,29 +265,70 @@ def main():
                             def download_thread():
                                 try:
                                     filepath = download_manager.download_file(
-                                        update_info.download_url,
-                                        f"CustomsBarcodeAutomation_{update_info.latest_version}.exe",
+                                        download_url,
+                                        filename,
                                         update_info.file_size,
                                         progress_callback
                                     )
                                     
                                     root.after(0, progress_dialog.close)
                                     
-                                    # Show install prompt
-                                    def show_install_prompt():
-                                        install_dialog = InstallPromptDialog(root, filepath)
-                                        install_result = install_dialog.show()
+                                    # Handle ZIP extraction with auto-update
+                                    if download_manager.is_zip_file(filepath):
+                                        try:
+                                            # Get app directory for in-place update
+                                            app_dir = download_manager.get_app_directory()
+                                            
+                                            # Ask user if they want auto-update or manual
+                                            def ask_update_method():
+                                                result = messagebox.askyesno(
+                                                    "Cập nhật tự động",
+                                                    f"Đã tải xong bản cập nhật.\n\n"
+                                                    f"Bạn có muốn cập nhật tự động không?\n"
+                                                    f"- Ấn 'Yes': Ứng dụng sẽ đóng và tự động cập nhật\n"
+                                                    f"- Ấn 'No': Giải nén vào thư mục riêng để cập nhật thủ công"
+                                                )
+                                                
+                                                if result:
+                                                    # Auto-update: close app and run update script
+                                                    logger.info("Starting auto-update...")
+                                                    if download_manager.run_update_and_restart(filepath, app_dir):
+                                                        # Close the app to allow update
+                                                        root.after(500, root.destroy)
+                                                    else:
+                                                        messagebox.showerror("Lỗi", "Không thể khởi động quá trình cập nhật!")
+                                                else:
+                                                    # Manual update: extract to separate folder
+                                                    extract_dir = download_manager.extract_zip(filepath)
+                                                    messagebox.showinfo(
+                                                        "Tải xuống hoàn tất",
+                                                        f"Đã giải nén phiên bản mới tại:\n{extract_dir}\n\n"
+                                                        "Vui lòng đóng ứng dụng và copy các file vào thư mục cài đặt."
+                                                    )
+                                                    import subprocess
+                                                    subprocess.Popen(['explorer', extract_dir])
+                                            
+                                            root.after(0, ask_update_method)
+                                            
+                                        except Exception as e:
+                                            logger.error(f"Update failed: {e}")
+                                            root.after(0, lambda: messagebox.showerror("Lỗi", f"Cập nhật thất bại: {e}"))
+                                    else:
+                                        # Handle EXE installer
+                                        def show_install_prompt():
+                                            install_dialog = InstallPromptDialog(root, filepath)
+                                            install_result = install_dialog.show()
+                                            
+                                            if install_result == "install_now":
+                                                # Launch installer and close app
+                                                import subprocess
+                                                subprocess.Popen([filepath], shell=True)
+                                                root.after(500, root.destroy)
+                                            else:
+                                                # Save pending installer
+                                                download_manager.save_pending_installer(filepath, config_manager)
                                         
-                                        if install_result == "install_now":
-                                            # Launch installer and close app
-                                            import subprocess
-                                            subprocess.Popen([filepath], shell=True)
-                                            root.after(500, root.destroy)
-                                        else:
-                                            # Save pending installer
-                                            download_manager.save_pending_installer(filepath, config_manager)
-                                    
-                                    root.after(0, show_install_prompt)
+                                        root.after(0, show_install_prompt)
                                     
                                 except DownloadCancelledError:
                                     logger.info("Download cancelled by user")

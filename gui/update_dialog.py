@@ -71,7 +71,7 @@ class UpdateDialog:
         ttk.Label(version_frame, text="→").pack(side=tk.LEFT, padx=10)
         
         ttk.Label(version_frame, text="Phiên bản mới:").pack(side=tk.LEFT)
-        ttk.Label(version_frame, text=self.update_info.latest_version, font=('Segoe UI', 10, 'bold'), foreground='green').pack(side=tk.LEFT, padx=5)
+        ttk.Label(version_frame, text=self.update_info.latest_version, font=('Segoe UI', 10, 'bold'), style='Success.TLabel').pack(side=tk.LEFT, padx=5)
         
         # Release notes
         notes_label = ttk.Label(main_frame, text="Nội dung cập nhật:")

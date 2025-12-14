@@ -248,7 +248,8 @@ class AutocompleteCombobox(ttk.Combobox):
         if self._is_placeholder_shown or current == self.placeholder:
             # Clear placeholder
             self.set('')
-            self.configure(foreground='black')
+            # Use default foreground from style instead of hardcoded color
+            self.configure(foreground='')  # Reset to style default
             self._is_placeholder_shown = False
         
         # Always place cursor at end without selecting text
@@ -274,7 +275,8 @@ class AutocompleteCombobox(ttk.Combobox):
         # Clear placeholder on click
         if self._is_placeholder_shown or current == self.placeholder:
             self.set('')
-            self.configure(foreground='black')
+            # Use default foreground from style instead of hardcoded color
+            self.configure(foreground='')  # Reset to style default
             self._is_placeholder_shown = False
             self['values'] = self.all_values
         elif not self._is_filtering:
@@ -358,7 +360,8 @@ class AutocompleteCombobox(ttk.Combobox):
         self['values'] = self.all_values
         self._last_search = ""
         self._dropdown_open = False
-        self.configure(foreground='black')
+        # Use default foreground from style instead of hardcoded color
+        self.configure(foreground='')  # Reset to style default
         self._is_placeholder_shown = False
         
         # Call callback if provided
@@ -368,7 +371,9 @@ class AutocompleteCombobox(ttk.Combobox):
     def _show_placeholder(self) -> None:
         """Show placeholder text."""
         self.set(self.placeholder)
-        self.configure(foreground='gray')
+        # Use a muted color for placeholder - this works for both themes
+        # as ttk styles handle the actual color based on theme
+        self.configure(foreground='#888888')  # Neutral gray that works in both themes
         self._is_placeholder_shown = True
         self._last_search = ""
     

@@ -178,40 +178,57 @@ class TestGetButtonConfig:
     """Test the get_button_config method."""
     
     def test_primary_button_config(self):
-        """Test primary button configuration."""
+        """Test primary button configuration for light theme."""
         from gui.styles import ModernStyles
-        config = ModernStyles.get_button_config('primary')
+        config = ModernStyles.get_button_config('primary', 'light')
         
         assert config['bg'] == ModernStyles.PRIMARY_COLOR
-        assert config['fg'] == ModernStyles.TEXT_ON_PRIMARY
-        assert config['activebackground'] == ModernStyles.PRIMARY_HOVER
+        assert config['fg'] == '#ffffff'
+        assert config['activebackground'] == ModernStyles.PRIMARY_COLOR
         assert config['relief'] == 'flat'
         assert config['cursor'] == 'hand2'
     
     def test_success_button_config(self):
-        """Test success button configuration."""
+        """Test success button configuration for light theme."""
         from gui.styles import ModernStyles
-        config = ModernStyles.get_button_config('success')
+        config = ModernStyles.get_button_config('success', 'light')
         
         assert config['bg'] == ModernStyles.SUCCESS_COLOR
-        assert config['fg'] == ModernStyles.TEXT_ON_PRIMARY
+        assert config['fg'] == '#ffffff'
     
     def test_danger_button_config(self):
-        """Test danger button configuration."""
+        """Test danger button configuration for light theme."""
         from gui.styles import ModernStyles
-        config = ModernStyles.get_button_config('danger')
+        config = ModernStyles.get_button_config('danger', 'light')
         
         assert config['bg'] == ModernStyles.ERROR_COLOR
-        assert config['fg'] == ModernStyles.TEXT_ON_PRIMARY
+        assert config['fg'] == '#ffffff'
     
     def test_secondary_button_config(self):
-        """Test secondary button configuration."""
+        """Test secondary button configuration for light theme."""
         from gui.styles import ModernStyles
-        config = ModernStyles.get_button_config('secondary')
+        config = ModernStyles.get_button_config('secondary', 'light')
         
-        assert config['bg'] == ModernStyles.BG_PRIMARY
-        assert config['fg'] == ModernStyles.PRIMARY_COLOR
+        assert config['bg'] == ModernStyles.BG_SECONDARY
+        assert config['fg'] == ModernStyles.TEXT_PRIMARY
         assert config['relief'] == 'solid'
+    
+    def test_dark_theme_button_config(self):
+        """Test button configuration for dark theme."""
+        from gui.styles import ModernStyles
+        config = ModernStyles.get_button_config('primary', 'dark')
+        
+        # Dark theme uses different accent color
+        assert config['bg'] == '#4da6ff'  # Dark theme accent
+        assert config['fg'] == '#ffffff'
+    
+    def test_warning_button_config(self):
+        """Test warning button configuration."""
+        from gui.styles import ModernStyles
+        config = ModernStyles.get_button_config('warning', 'light')
+        
+        assert config['bg'] == ModernStyles.WARNING_COLOR
+        assert config['fg'] == '#ffffff'  # Light theme uses white text on warning
     
     def test_unknown_button_type_returns_primary(self):
         """Test unknown button type returns primary config."""

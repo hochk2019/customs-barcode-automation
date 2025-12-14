@@ -91,12 +91,12 @@ class ConfigurationManager:
             encrypted_password: Encrypted password string
             
         Returns:
-            Decrypted plain text password
+            Decrypted plain text password, or empty string if decryption fails
         """
         if not encrypted_password:
             return ""
         
-        # If it doesn't look encrypted, return as-is
+        # If it doesn't look encrypted (Fernet tokens start with 'gAAAAA'), return as-is
         if not encrypted_password.startswith('gAAAAA'):
             return encrypted_password
         
@@ -112,13 +112,19 @@ class ConfigurationManager:
                     return decrypted2.decode()
                 except Exception:
                     # Second decryption failed, return first result
-                    # This might still be encrypted with a different key
                     return result
             
             return result
-        except Exception:
-            # If decryption fails, assume it's plain text (for backward compatibility)
-            return encrypted_password
+        except Exception as e:
+            # Decryption failed - this usually means the encryption key has changed
+            # Return empty string to force user to re-enter password
+            # This is safer than returning the encrypted string which would be invalid
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Password decryption failed (encryption key may have changed). "
+                f"Please re-enter your database password."
+            )
+            return ""
     
     def get_database_config(self) -> DatabaseConfig:
         """
@@ -172,7 +178,7 @@ class ConfigurationManager:
                 web_timeout=self.config.getint('BarcodeService', 'web_timeout', fallback=60),
                 session_reuse=self.config.getboolean('BarcodeService', 'session_reuse', fallback=True),
                 output_path=output_path,
-                retrieval_method=self.config.get('BarcodeService', 'retrieval_method', fallback='auto'),
+                retrieval_method=self.config.get('BarcodeService', 'retrieval_method', fallback='api'),
                 pdf_naming_format=self.config.get('BarcodeService', 'pdf_naming_format', fallback='tax_code')
             )
         except (configparser.NoSectionError, configparser.NoOptionError) as e:
@@ -252,7 +258,7 @@ class ConfigurationManager:
         Returns:
             Retrieval method ('auto', 'api', or 'web')
         """
-        return self.config.get('BarcodeService', 'retrieval_method', fallback='auto')
+        return self.config.get('BarcodeService', 'retrieval_method', fallback='api')
     
     def set_retrieval_method(self, method: str) -> None:
         """
@@ -747,6 +753,41 @@ class ConfigurationManager:
             self.get_window_width(),
             self.get_window_height()
         )
+    
+    def get(self, section: str, option: str, fallback: str = '') -> str:
+        """
+        Get a configuration value from any section.
+        
+        This is a generic getter that provides direct access to config values.
+        
+        Args:
+            section: Configuration section name
+            option: Option name within the section
+            fallback: Default value if not found
+            
+        Returns:
+            Configuration value as string
+        """
+        try:
+            return self.config.get(section, option, fallback=fallback)
+        except (configparser.NoSectionError, configparser.NoOptionError):
+            return fallback
+    
+    def set(self, section: str, option: str, value: str) -> None:
+        """
+        Set a configuration value in any section.
+        
+        This is a generic setter that provides direct access to config values.
+        
+        Args:
+            section: Configuration section name
+            option: Option name within the section
+            value: Value to set
+        """
+        if not self.config.has_section(section):
+            self.config.add_section(section)
+        self.config.set(section, option, value)
+        self._save_config_file()
     
     def set_window_state(self, x: int, y: int, width: int, height: int) -> None:
         """

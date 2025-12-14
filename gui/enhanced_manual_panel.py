@@ -649,12 +649,14 @@ class EnhancedManualPanel(ttk.Frame):
         self.preview_tree.pack(fill=tk.BOTH, expand=True)
         
         # Configure alternating row colors for Treeview (Requirement 4.8)
+        # Note: Theme-aware colors will be applied by ThemeManager when theme changes
         ModernStyles.configure_treeview_tags(self.preview_tree)
         
         # Configure result column tags for success/error colors
         # Use bold font for better visibility of checkmarks
-        self.preview_tree.tag_configure('success_result', foreground='#228B22', font=('Segoe UI', 12, 'bold'))  # Forest green
-        self.preview_tree.tag_configure('error_result', foreground='#DC143C', font=('Segoe UI', 12, 'bold'))  # Crimson red
+        # Note: These colors will be updated by ThemeManager._update_treeview_tags when theme changes
+        self.preview_tree.tag_configure('success_result', foreground=ModernStyles.SUCCESS_COLOR, font=('Segoe UI', 12, 'bold'))
+        self.preview_tree.tag_configure('error_result', foreground=ModernStyles.ERROR_COLOR, font=('Segoe UI', 12, 'bold'))
         
         # Bind click event for checkbox toggle
         self.preview_tree.bind("<Button-1>", self._on_tree_click)

@@ -419,40 +419,93 @@ class ModernStyles:
         return status_colors.get(status.lower(), cls.TEXT_PRIMARY)
     
     @classmethod
-    def configure_treeview_tags(cls, treeview: ttk.Treeview) -> None:
+    def configure_treeview_tags(cls, treeview: ttk.Treeview, theme: str = 'light') -> None:
         """
         Configure alternating row tags for a Treeview widget.
         
         Args:
             treeview: The Treeview widget to configure
+            theme: 'light' or 'dark'
         """
-        treeview.tag_configure('oddrow', background=cls.BG_PRIMARY)
-        treeview.tag_configure('evenrow', background=cls.BG_TERTIARY)
-        treeview.tag_configure('hover', background=cls.BG_HOVER)
+        if theme == 'dark':
+            # Dark theme colors - unified background
+            bg_primary = '#1e1e1e'
+            bg_secondary = '#252525'
+            bg_hover = '#333333'
+            success_bg = '#1a2e1a'
+            error_bg = '#2e1a1a'
+            warning_bg = '#2e2a1a'
+            info_bg = '#1a2a2e'
+            success_fg = '#4caf50'
+            error_fg = '#f44336'
+            warning_fg = '#ffb74d'
+            info_fg = '#4da6ff'
+        else:
+            # Light theme colors
+            bg_primary = cls.BG_PRIMARY
+            bg_secondary = '#fafafa'
+            bg_hover = cls.BG_HOVER
+            success_bg = '#E6F4E6'
+            error_bg = '#FDE7E7'
+            warning_bg = '#FFF4E5'
+            info_bg = '#E6F2FA'
+            success_fg = '#107C10'
+            error_fg = '#D13438'
+            warning_fg = '#FF8C00'
+            info_fg = '#0078D4'
         
-        # Status row tags
-        treeview.tag_configure('success', background='#E6F4E6')
-        treeview.tag_configure('error', background='#FDE7E7')
-        treeview.tag_configure('warning', background='#FFF4E5')
-        treeview.tag_configure('info', background='#E6F2FA')
+        treeview.tag_configure('oddrow', background=bg_primary)
+        treeview.tag_configure('evenrow', background=bg_secondary)
+        treeview.tag_configure('hover', background=bg_hover)
+        
+        # Status row tags with foreground colors
+        treeview.tag_configure('success', background=success_bg, foreground=success_fg)
+        treeview.tag_configure('error', background=error_bg, foreground=error_fg)
+        treeview.tag_configure('warning', background=warning_bg, foreground=warning_fg)
+        treeview.tag_configure('info', background=info_bg, foreground=info_fg)
+        
+        # Result column tags
+        treeview.tag_configure('success_result', foreground=success_fg, font=('Segoe UI', 12, 'bold'))
+        treeview.tag_configure('error_result', foreground=error_fg, font=('Segoe UI', 12, 'bold'))
     
     @classmethod
-    def get_button_config(cls, button_type: str = 'primary') -> Dict[str, Any]:
+    def get_button_config(cls, button_type: str = 'primary', theme: str = 'light') -> Dict[str, Any]:
         """
         Get configuration dict for tk.Button (non-ttk).
         
         Args:
-            button_type: One of 'primary', 'success', 'danger', 'secondary'
+            button_type: One of 'primary', 'success', 'danger', 'secondary', 'warning'
+            theme: 'light' or 'dark'
             
         Returns:
             Dictionary of button configuration options
         """
+        # Theme-specific colors
+        if theme == 'dark':
+            bg_primary = '#1e1e1e'
+            bg_secondary = '#252525'
+            bg_hover = '#333333'
+            text_primary = '#ffffff'
+            accent = '#4da6ff'
+            success = '#4caf50'
+            error = '#f44336'
+            warning = '#ffb74d'
+        else:
+            bg_primary = cls.BG_PRIMARY
+            bg_secondary = cls.BG_SECONDARY
+            bg_hover = cls.BG_HOVER
+            text_primary = cls.TEXT_PRIMARY
+            accent = cls.PRIMARY_COLOR
+            success = cls.SUCCESS_COLOR
+            error = cls.ERROR_COLOR
+            warning = cls.WARNING_COLOR
+        
         configs = {
             'primary': {
-                'bg': cls.PRIMARY_COLOR,
-                'fg': cls.TEXT_ON_PRIMARY,
-                'activebackground': cls.PRIMARY_HOVER,
-                'activeforeground': cls.TEXT_ON_PRIMARY,
+                'bg': accent,
+                'fg': '#ffffff',
+                'activebackground': accent,
+                'activeforeground': '#ffffff',
                 'relief': 'flat',
                 'borderwidth': 0,
                 'padx': cls.PADDING_NORMAL,
@@ -461,10 +514,10 @@ class ModernStyles:
                 'cursor': 'hand2'
             },
             'success': {
-                'bg': cls.SUCCESS_COLOR,
-                'fg': cls.TEXT_ON_PRIMARY,
-                'activebackground': '#0E6B0E',
-                'activeforeground': cls.TEXT_ON_PRIMARY,
+                'bg': success,
+                'fg': '#ffffff',
+                'activebackground': success,
+                'activeforeground': '#ffffff',
                 'relief': 'flat',
                 'borderwidth': 0,
                 'padx': cls.PADDING_NORMAL,
@@ -473,10 +526,22 @@ class ModernStyles:
                 'cursor': 'hand2'
             },
             'danger': {
-                'bg': cls.ERROR_COLOR,
-                'fg': cls.TEXT_ON_PRIMARY,
-                'activebackground': '#B52D30',
-                'activeforeground': cls.TEXT_ON_PRIMARY,
+                'bg': error,
+                'fg': '#ffffff',
+                'activebackground': error,
+                'activeforeground': '#ffffff',
+                'relief': 'flat',
+                'borderwidth': 0,
+                'padx': cls.PADDING_NORMAL,
+                'pady': cls.PADDING_SMALL,
+                'font': (cls.FONT_FAMILY, cls.FONT_SIZE_NORMAL),
+                'cursor': 'hand2'
+            },
+            'warning': {
+                'bg': warning,
+                'fg': '#000000' if theme == 'dark' else '#ffffff',
+                'activebackground': warning,
+                'activeforeground': '#000000' if theme == 'dark' else '#ffffff',
                 'relief': 'flat',
                 'borderwidth': 0,
                 'padx': cls.PADDING_NORMAL,
@@ -485,10 +550,10 @@ class ModernStyles:
                 'cursor': 'hand2'
             },
             'secondary': {
-                'bg': cls.BG_PRIMARY,
-                'fg': cls.PRIMARY_COLOR,
-                'activebackground': cls.BG_HOVER,
-                'activeforeground': cls.PRIMARY_COLOR,
+                'bg': bg_secondary,
+                'fg': text_primary,
+                'activebackground': bg_hover,
+                'activeforeground': text_primary,
                 'relief': 'solid',
                 'borderwidth': 1,
                 'padx': cls.PADDING_NORMAL,

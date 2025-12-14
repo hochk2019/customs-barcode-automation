@@ -242,3 +242,143 @@ class DownloadManager:
             True if file is a valid ZIP
         """
         return filepath.lower().endswith('.zip') and zipfile.is_zipfile(filepath)
+    
+    def create_update_script(self, zip_path: str, target_dir: str, exe_name: str = "CustomsAutomation.exe") -> str:
+        """
+        Create a batch script to perform the update after app closes.
+        
+        The script will:
+        1. Wait for the current app to close
+        2. Extract ZIP contents to target directory (overwrite)
+        3. Delete the ZIP file
+        4. Restart the application
+        
+        Args:
+            zip_path: Path to the downloaded ZIP file
+            target_dir: Directory where the app is installed (to extract to)
+            exe_name: Name of the executable to restart
+            
+        Returns:
+            Path to the created batch script
+        """
+        import sys
+        
+        # Get current process ID
+        current_pid = os.getpid()
+        
+        # Create batch script content
+        # Important: Backup config.ini and .encryption_key before update, restore after
+        script_content = f'''@echo off
+chcp 65001 >nul
+echo ========================================
+echo   Đang cập nhật ứng dụng...
+echo ========================================
+echo.
+
+REM Wait for the main application to close
+echo Đang đợi ứng dụng đóng...
+:waitloop
+tasklist /FI "PID eq {current_pid}" 2>NUL | find /I "{current_pid}" >NUL
+if "%ERRORLEVEL%"=="0" (
+    timeout /t 1 /nobreak >nul
+    goto waitloop
+)
+
+echo Ứng dụng đã đóng. Bắt đầu cập nhật...
+timeout /t 2 /nobreak >nul
+
+REM Backup important user files before update
+echo Đang sao lưu cấu hình...
+set "BACKUP_DIR=%TEMP%\\customs_backup_%RANDOM%"
+mkdir "%BACKUP_DIR%" 2>nul
+if exist "{target_dir}\\config.ini" copy /Y "{target_dir}\\config.ini" "%BACKUP_DIR%\\config.ini" >nul
+if exist "{target_dir}\\.encryption_key" copy /Y "{target_dir}\\.encryption_key" "%BACKUP_DIR%\\.encryption_key" >nul
+
+REM Extract ZIP to target directory (overwrite existing files)
+echo Đang giải nén bản cập nhật...
+powershell -Command "Expand-Archive -Path '{zip_path}' -DestinationPath '{target_dir}' -Force"
+
+if %ERRORLEVEL% NEQ 0 (
+    echo Lỗi: Không thể giải nén file cập nhật!
+    pause
+    exit /b 1
+)
+
+REM Restore user configuration files (don't overwrite with defaults)
+echo Đang khôi phục cấu hình...
+if exist "%BACKUP_DIR%\\config.ini" copy /Y "%BACKUP_DIR%\\config.ini" "{target_dir}\\config.ini" >nul
+if exist "%BACKUP_DIR%\\.encryption_key" copy /Y "%BACKUP_DIR%\\.encryption_key" "{target_dir}\\.encryption_key" >nul
+
+REM Clean up backup
+rmdir /s /q "%BACKUP_DIR%" 2>nul
+
+REM Delete the ZIP file
+echo Đang dọn dẹp...
+del /f /q "{zip_path}" 2>nul
+
+REM Restart the application
+echo Khởi động lại ứng dụng...
+timeout /t 1 /nobreak >nul
+start "" "{os.path.join(target_dir, exe_name)}"
+
+REM Delete this script
+del /f /q "%~f0" 2>nul
+'''
+        
+        # Save script to temp directory
+        script_path = os.path.join(tempfile.gettempdir(), "customs_update.bat")
+        with open(script_path, 'w', encoding='utf-8') as f:
+            f.write(script_content)
+        
+        logger.info(f"Created update script: {script_path}")
+        return script_path
+    
+    def run_update_and_restart(self, zip_path: str, target_dir: str, exe_name: str = "CustomsAutomation.exe") -> bool:
+        """
+        Create and run the update script, then signal the app to close.
+        
+        Args:
+            zip_path: Path to the downloaded ZIP file
+            target_dir: Directory where the app is installed
+            exe_name: Name of the executable
+            
+        Returns:
+            True if script was started successfully
+        """
+        import subprocess
+        
+        try:
+            # Create the update script
+            script_path = self.create_update_script(zip_path, target_dir, exe_name)
+            
+            # Run the script in a new process (detached)
+            # Use CREATE_NEW_CONSOLE to show progress to user
+            CREATE_NEW_CONSOLE = 0x00000010
+            subprocess.Popen(
+                ['cmd', '/c', script_path],
+                creationflags=CREATE_NEW_CONSOLE,
+                close_fds=True
+            )
+            
+            logger.info("Update script started, app will close for update")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to start update script: {e}")
+            return False
+    
+    def get_app_directory(self) -> str:
+        """
+        Get the directory where the application is installed.
+        
+        Returns:
+            Path to the application directory
+        """
+        import sys
+        
+        # If running as frozen exe (PyInstaller)
+        if getattr(sys, 'frozen', False):
+            return os.path.dirname(sys.executable)
+        else:
+            # Running as script - use current working directory
+            return os.getcwd()

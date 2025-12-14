@@ -136,9 +136,9 @@ class CustomsAutomationGUI:
         self._load_processed_declarations()
         
         # Apply saved theme after all GUI components are created (Requirements 7.5)
+        # Always apply the saved theme to ensure consistent styling
         saved_theme = self.config_manager.get_theme()
-        if saved_theme == 'dark':
-            self.theme_manager.apply_theme('dark')
+        self.theme_manager.apply_theme(saved_theme)
         
         # Initialize BackupService and check for backup on startup (Requirements 8.1)
         self._init_backup_service()
@@ -432,22 +432,46 @@ class CustomsAutomationGUI:
                                     
                                     self.root.after(0, progress_dialog.close)
                                     
-                                    # Handle ZIP extraction
+                                    # Handle ZIP extraction with auto-update
                                     if download_manager.is_zip_file(filepath):
                                         try:
-                                            extract_dir = download_manager.extract_zip(filepath)
-                                            # Show message about extracted location
-                                            self.root.after(0, lambda: messagebox.showinfo(
-                                                "Tải xuống hoàn tất",
-                                                f"Đã tải và giải nén phiên bản mới tại:\n{extract_dir}\n\n"
-                                                "Vui lòng đóng ứng dụng và chạy file CustomsAutomation.exe trong thư mục đã giải nén."
-                                            ))
-                                            # Open the extracted folder
-                                            import subprocess
-                                            subprocess.Popen(['explorer', extract_dir])
+                                            # Get app directory for in-place update
+                                            app_dir = download_manager.get_app_directory()
+                                            
+                                            # Ask user if they want auto-update or manual
+                                            def ask_update_method():
+                                                result = messagebox.askyesno(
+                                                    "Cập nhật tự động",
+                                                    f"Đã tải xong bản cập nhật.\n\n"
+                                                    f"Bạn có muốn cập nhật tự động không?\n"
+                                                    f"- Ấn 'Yes': Ứng dụng sẽ đóng và tự động cập nhật\n"
+                                                    f"- Ấn 'No': Giải nén vào thư mục riêng để cập nhật thủ công"
+                                                )
+                                                
+                                                if result:
+                                                    # Auto-update: close app and run update script
+                                                    self.logger.info("Starting auto-update...")
+                                                    if download_manager.run_update_and_restart(filepath, app_dir):
+                                                        # Close the app to allow update
+                                                        self.root.after(500, self.root.destroy)
+                                                    else:
+                                                        messagebox.showerror("Lỗi", "Không thể khởi động quá trình cập nhật!")
+                                                else:
+                                                    # Manual update: extract to separate folder
+                                                    extract_dir = download_manager.extract_zip(filepath)
+                                                    messagebox.showinfo(
+                                                        "Tải xuống hoàn tất",
+                                                        f"Đã giải nén phiên bản mới tại:\n{extract_dir}\n\n"
+                                                        "Vui lòng đóng ứng dụng và copy các file vào thư mục cài đặt."
+                                                    )
+                                                    import subprocess
+                                                    subprocess.Popen(['explorer', extract_dir])
+                                            
+                                            self.root.after(0, ask_update_method)
+                                            
                                         except Exception as e:
-                                            self.logger.error(f"Extraction failed: {e}")
-                                            self.root.after(0, lambda: messagebox.showerror("Lỗi", f"Giải nén thất bại: {e}"))
+                                            self.logger.error(f"Update failed: {e}")
+                                            self.root.after(0, lambda: messagebox.showerror("Lỗi", f"Cập nhật thất bại: {e}"))
                                     else:
                                         # Handle EXE installer
                                         def show_install_prompt():
@@ -1305,6 +1329,11 @@ class CustomsAutomationGUI:
         dialog.transient(self.root)
         dialog.grab_set()
         
+        # Apply current theme to dialog background
+        if self.theme_manager:
+            colors = self.theme_manager.get_theme_colors()
+            dialog.configure(bg=colors['bg_primary'])
+        
         # Center dialog on parent window
         dialog.update_idletasks()
         x = self.root.winfo_x() + (self.root.winfo_width() - dialog.winfo_width()) // 2
@@ -1592,10 +1621,53 @@ class CustomsAutomationGUI:
                 self.logger.error(f"Failed to save database config: {e}")
                 messagebox.showerror("Lỗi", f"Không thể lưu cấu hình:\n{str(e)}")
         
-        # Buttons
-        ttk.Button(button_frame, text="Kiểm tra kết nối", command=test_connection, width=15).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Lưu & Kết nối", command=save_and_reconnect, width=12).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Đóng", command=dialog.destroy, width=10).pack(side=tk.LEFT, padx=5)
+        # Get theme colors for buttons
+        theme_colors = self.theme_manager.get_theme_colors() if self.theme_manager else {}
+        btn_accent = theme_colors.get('accent', ModernStyles.PRIMARY_COLOR)
+        btn_success = theme_colors.get('success', ModernStyles.SUCCESS_COLOR)
+        btn_bg_secondary = theme_colors.get('bg_secondary', ModernStyles.BG_SECONDARY)
+        btn_text_primary = theme_colors.get('text_primary', ModernStyles.TEXT_PRIMARY)
+        btn_highlight = theme_colors.get('highlight', ModernStyles.BG_HOVER)
+        
+        # Buttons - Use tk.Button instead of ttk.Button for better text visibility in dark mode
+        tk.Button(
+            button_frame, 
+            text="Kiểm tra kết nối", 
+            command=test_connection, 
+            width=15,
+            bg=btn_accent,
+            fg="#ffffff",
+            activebackground=btn_accent,
+            activeforeground="#ffffff",
+            relief=tk.FLAT,
+            cursor="hand2"
+        ).pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(
+            button_frame, 
+            text="Lưu & Kết nối", 
+            command=save_and_reconnect, 
+            width=14,
+            bg=btn_success,
+            fg="#ffffff",
+            activebackground=btn_success,
+            activeforeground="#ffffff",
+            relief=tk.FLAT,
+            cursor="hand2"
+        ).pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(
+            button_frame, 
+            text="Đóng", 
+            command=dialog.destroy, 
+            width=10,
+            bg=btn_bg_secondary,
+            fg=btn_text_primary,
+            activebackground=btn_highlight,
+            activeforeground=btn_text_primary,
+            relief=tk.FLAT,
+            cursor="hand2"
+        ).pack(side=tk.LEFT, padx=5)
     
     def _show_settings_dialog(self) -> None:
         """
