@@ -129,7 +129,7 @@ class UIConfig:
     UI configuration settings for the application.
     
     Stores user preferences for theme, notifications, sound, batch limits,
-    and window position/size.
+    window position/size, panel split position, and recent companies count.
     """
     theme: str = 'light'  # 'light' or 'dark'
     notifications_enabled: bool = True
@@ -139,6 +139,9 @@ class UIConfig:
     window_y: int = -1
     window_width: int = 1200
     window_height: int = 850
+    # Layout optimization settings (Requirements 8.3, 8.4, 6.3, 6.4)
+    panel_split_position: float = 0.38  # Left panel ratio (0.25-0.50)
+    recent_companies_count: int = 5  # Number of recent companies to display (3-10)
     
     def validate(self) -> bool:
         """
@@ -152,6 +155,10 @@ class UIConfig:
         if not (1 <= self.batch_limit <= 50):
             return False
         if self.window_width < 800 or self.window_height < 600:
+            return False
+        if not (0.25 <= self.panel_split_position <= 0.50):
+            return False
+        if not (3 <= self.recent_companies_count <= 10):
             return False
         return True
     

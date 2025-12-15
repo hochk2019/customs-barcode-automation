@@ -52,7 +52,8 @@ class EnhancedManualPanel(ttk.Frame):
         file_manager = None,
         tracking_db = None,
         on_download_complete: Optional[Callable[[int, int], None]] = None,
-        error_tracker: Optional[ErrorTracker] = None
+        error_tracker: Optional[ErrorTracker] = None,
+        hide_preview_section: bool = False
     ):
         """
         Initialize EnhancedManualPanel
@@ -80,6 +81,10 @@ class EnhancedManualPanel(ttk.Frame):
         self.tracking_db = tracking_db
         self.on_download_complete = on_download_complete
         self._error_tracker = error_tracker
+        self._hide_preview_section = hide_preview_section  # Hide preview table when used in two-column layout
+        
+        # External preview panel reference (set when hide_preview_section=True)
+        self._external_preview_panel = None
         
         # State tracking
         self.current_state = "initial"  # initial, companies_loaded, preview_displayed, downloading, complete
@@ -111,6 +116,11 @@ class EnhancedManualPanel(ttk.Frame):
             self._log('warning', f"Failed to initialize BatchLimiter: {e}")
             self._batch_limiter = None
         
+        # Initialize checkbox variables (needed for both internal and external preview panel)
+        # These are used by preview_declarations() regardless of hide_preview_section
+        self.include_pending_var = tk.BooleanVar(value=False)
+        self.exclude_xnktc_var = tk.BooleanVar(value=True)  # Default: enabled
+        
         # Apply modern styles (Requirements 4.1, 4.2, 4.3, 4.4)
         self._apply_modern_styles()
         
@@ -118,8 +128,12 @@ class EnhancedManualPanel(ttk.Frame):
         self._create_output_directory_section()
         self._create_company_section()
         self._create_date_range_section()
-        self._create_action_buttons()  # Moved before preview to show buttons first
-        self._create_preview_section()
+        
+        # Only create action buttons and preview section if not hidden
+        # When hide_preview_section=True, these are in the right pane (PreviewPanel)
+        if not self._hide_preview_section:
+            self._create_action_buttons()
+            self._create_preview_section()
         
         # Initialize keyboard shortcuts (Requirements 5.1, 5.2, 5.3, 5.4, 5.5)
         self._setup_keyboard_shortcuts()
@@ -133,6 +147,18 @@ class EnhancedManualPanel(ttk.Frame):
             log_method = getattr(self.logger, level, None)
             if log_method:
                 log_method(message, **kwargs)
+    
+    def set_external_preview_panel(self, preview_panel) -> None:
+        """
+        Set external preview panel reference for two-column layout.
+        
+        When hide_preview_section=True, this panel is used to display
+        preview data instead of the internal preview table.
+        
+        Args:
+            preview_panel: PreviewPanel instance from right pane
+        """
+        self._external_preview_panel = preview_panel
     
     def _update_pdf_naming_service(self) -> None:
         """
@@ -209,13 +235,15 @@ class EnhancedManualPanel(ttk.Frame):
     def _shortcut_select_all(self) -> None:
         """Handle Ctrl+A shortcut - select all (Requirement 5.2)"""
         if self.current_state in ("preview_displayed", "complete"):
-            self.select_all_var.set(True)
+            if hasattr(self, 'select_all_var') and self.select_all_var:
+                self.select_all_var.set(True)
             self.toggle_select_all()
     
     def _shortcut_deselect_all(self) -> None:
         """Handle Ctrl+Shift+A shortcut - deselect all (Requirement 5.3)"""
         if self.current_state in ("preview_displayed", "complete"):
-            self.select_all_var.set(False)
+            if hasattr(self, 'select_all_var') and self.select_all_var:
+                self.select_all_var.set(False)
             self.toggle_select_all()
     
     def _shortcut_stop(self) -> None:
@@ -229,9 +257,11 @@ class EnhancedManualPanel(ttk.Frame):
         
         Requirement 5.5
         """
-        # Create tooltip bindings for buttons
-        self._create_tooltip(self.preview_button, "Xem trước tờ khai (F5)")
-        self._create_tooltip(self.stop_button, "Dừng tải xuống (Escape)")
+        # Create tooltip bindings for buttons (only if they exist)
+        if hasattr(self, 'preview_button') and self.preview_button:
+            self._create_tooltip(self.preview_button, "Xem trước tờ khai (F5)")
+        if hasattr(self, 'stop_button') and self.stop_button:
+            self._create_tooltip(self.stop_button, "Dừng tải xuống (Escape)")
     
     def _create_tooltip(self, widget: tk.Widget, text: str) -> None:
         """
@@ -544,7 +574,7 @@ class EnhancedManualPanel(ttk.Frame):
         self.selection_count_label.pack(side=tk.LEFT, padx=20)
         
         # Checkbox to include non-cleared declarations (phân luồng nhưng chưa thông quan)
-        self.include_pending_var = tk.BooleanVar(value=False)
+        # Note: include_pending_var is already created in __init__
         self.include_pending_checkbox = ttk.Checkbutton(
             control_row,
             text="Xem cả tờ khai chưa thông quan",
@@ -554,7 +584,7 @@ class EnhancedManualPanel(ttk.Frame):
         self.include_pending_checkbox.pack(side=tk.LEFT, padx=20)
         
         # Checkbox to exclude XNK TC declarations (Requirements 1.1, 1.2, 1.5)
-        self.exclude_xnktc_var = tk.BooleanVar(value=True)  # Default: enabled (Requirement 1.2)
+        # Note: exclude_xnktc_var is already created in __init__
         self.exclude_xnktc_checkbox = ttk.Checkbutton(
             control_row,
             text="Không lấy mã vạch tờ khai XNK TC",
@@ -980,30 +1010,37 @@ class EnhancedManualPanel(ttk.Frame):
             # 1. Reset company search box
             self.company_combo.clear()  # Clear and show placeholder
             
-            # 2. Reset preview table - clear all items
-            for item in self.preview_tree.get_children():
-                self.preview_tree.delete(item)
+            # 2. Reset preview table - clear all items (only if not hidden)
+            if not self._hide_preview_section and hasattr(self, 'preview_tree'):
+                for item in self.preview_tree.get_children():
+                    self.preview_tree.delete(item)
+            elif self._external_preview_panel:
+                self._external_preview_panel.clear()
             
-            # 3. Reset progress bar to 0
-            self.progress_bar['value'] = 0
-            self.progress_label.config(text="")
+            # 3. Reset progress bar to 0 (only if not hidden)
+            if not self._hide_preview_section and hasattr(self, 'progress_bar'):
+                self.progress_bar['value'] = 0
+                self.progress_label.config(text="")
             
-            # 4. Reset selection count
-            self.selection_count_label.config(text="Đã chọn: 0/0 tờ khai")
-            self.select_all_var.set(False)
+            # 4. Reset selection count (only if not hidden)
+            if not self._hide_preview_section and hasattr(self, 'selection_count_label'):
+                self.selection_count_label.config(text="Đã chọn: 0/0 tờ khai")
+                self.select_all_var.set(False)
             
-            # 5. Reset preview status
-            self.preview_status_label.config(
-                text="Chưa có dữ liệu xem trước",
-                foreground="gray"
-            )
+            # 5. Reset preview status (only if not hidden)
+            if not self._hide_preview_section and hasattr(self, 'preview_status_label'):
+                self.preview_status_label.config(
+                    text="Chưa có dữ liệu xem trước",
+                    foreground="gray"
+                )
             
             # 6. Clear preview manager data
             if hasattr(self.preview_manager, 'clear_preview'):
                 self.preview_manager.clear_preview()
             
-            # 7. Reset filter dropdown
-            self.filter_var.set("Tất cả")
+            # 7. Reset filter dropdown (only if not hidden)
+            if not self._hide_preview_section and hasattr(self, 'filter_var'):
+                self.filter_var.set("Tất cả")
             
             # 8. Load companies from database
             companies = self.company_scanner.load_companies()
@@ -1033,6 +1070,11 @@ class EnhancedManualPanel(ttk.Frame):
     
     def preview_declarations(self) -> None:
         """Preview declarations based on selected filters"""
+        # Sync checkbox values from external preview panel if using two-column layout
+        if self._hide_preview_section and self._external_preview_panel:
+            self.include_pending_var.set(self._external_preview_panel.include_pending_var.get())
+            self.exclude_xnktc_var.set(self._external_preview_panel.exclude_xnktc_var.get())
+        
         def preview_in_thread():
             try:
                 self._log('info', "Starting declaration preview")
@@ -1041,13 +1083,16 @@ class EnhancedManualPanel(ttk.Frame):
                 # Clear any previous cancel state
                 self.preview_manager.clear_preview()
                 
-                # Update UI
-                self.after(0, lambda: self.preview_button.config(state=tk.DISABLED))
-                self.after(0, lambda: self.cancel_button.config(state=tk.NORMAL))
-                self.after(0, lambda: self.preview_status_label.config(
-                    text="Đang truy vấn database...",
-                    foreground="blue"
-                ))
+                # Update UI - only if widgets exist (not hidden)
+                if not self._hide_preview_section:
+                    self.after(0, lambda: self.preview_button.config(state=tk.DISABLED))
+                    self.after(0, lambda: self.cancel_button.config(state=tk.NORMAL))
+                    self.after(0, lambda: self.preview_status_label.config(
+                        text="Đang truy vấn database...",
+                        foreground="blue"
+                    ))
+                elif self._external_preview_panel:
+                    self.after(0, lambda: self._external_preview_panel.update_status("Đang truy vấn database..."))
                 
                 # Validate date formats first
                 from_date_str = self.from_date_var.get()
@@ -1112,20 +1157,29 @@ class EnhancedManualPanel(ttk.Frame):
                         status_text = f"Tìm thấy {filtered_count} tờ khai (đã lọc bỏ {excluded_count} tờ khai XNK TC)"
                     else:
                         status_text = f"Tìm thấy {filtered_count} tờ khai"
-                    self.after(0, lambda: self.preview_status_label.config(
-                        text=status_text,
-                        foreground="green"
-                    ))
+                    
+                    if not self._hide_preview_section:
+                        self.after(0, lambda: self.preview_status_label.config(
+                            text=status_text,
+                            foreground="green"
+                        ))
+                    elif self._external_preview_panel:
+                        self.after(0, lambda: self._external_preview_panel.update_status(status_text))
+                    
                     self.after(0, lambda: self._set_state("preview_displayed"))
                 else:
                     if exclude_xnktc and excluded_count > 0:
                         status_text = f"Không tìm thấy tờ khai nào (đã lọc bỏ {excluded_count} tờ khai XNK TC)"
                     else:
                         status_text = "Không tìm thấy tờ khai nào"
-                    self.after(0, lambda: self.preview_status_label.config(
-                        text=status_text,
-                        foreground="orange"
-                    ))
+                    
+                    if not self._hide_preview_section:
+                        self.after(0, lambda: self.preview_status_label.config(
+                            text=status_text,
+                            foreground="orange"
+                        ))
+                    elif self._external_preview_panel:
+                        self.after(0, lambda: self._external_preview_panel.update_status(status_text))
                 
                 self._log('info', f"Preview completed: {filtered_count} declarations found (filtered from {total_count}, excluded {excluded_count} XNK TC)")
                 
@@ -1141,14 +1195,18 @@ class EnhancedManualPanel(ttk.Frame):
                     "Lỗi xem trước",
                     f"Không thể xem trước tờ khai:\n{str(e)}"
                 ))
-                self.after(0, lambda: self.preview_status_label.config(
-                    text="Lỗi xem trước",
-                    foreground="red"
-                ))
+                if not self._hide_preview_section:
+                    self.after(0, lambda: self.preview_status_label.config(
+                        text="Lỗi xem trước",
+                        foreground="red"
+                    ))
+                elif self._external_preview_panel:
+                    self.after(0, lambda: self._external_preview_panel.update_status("Lỗi xem trước", is_error=True))
             finally:
                 self.is_operation_running = False
-                self.after(0, lambda: self.preview_button.config(state=tk.NORMAL))
-                self.after(0, lambda: self.cancel_button.config(state=tk.DISABLED))
+                if not self._hide_preview_section:
+                    self.after(0, lambda: self.preview_button.config(state=tk.NORMAL))
+                    self.after(0, lambda: self.cancel_button.config(state=tk.DISABLED))
         
         # Run in background thread
         thread = threading.Thread(target=preview_in_thread, daemon=True)
@@ -1157,7 +1215,21 @@ class EnhancedManualPanel(ttk.Frame):
     def download_selected(self) -> None:
         """Download barcodes for selected declarations"""
         try:
-            selected_declarations = self.preview_manager.get_selected_declarations()
+            # Get selected declarations - sync from external panel if using two-column layout
+            if self._hide_preview_section and self._external_preview_panel:
+                # Get selected declaration numbers from PreviewPanel
+                selected_numbers = self._external_preview_panel.get_selected_declarations()
+                
+                # Find matching Declaration objects
+                selected_declarations = [
+                    decl for decl in self.preview_manager._all_declarations
+                    if decl.declaration_number in selected_numbers
+                ]
+                
+                # Sync selection to preview_manager for consistency
+                self.preview_manager._selected_declarations = {decl.id for decl in selected_declarations}
+            else:
+                selected_declarations = self.preview_manager.get_selected_declarations()
             
             if not selected_declarations:
                 messagebox.showwarning(
@@ -1195,6 +1267,10 @@ class EnhancedManualPanel(ttk.Frame):
             
             # Set state to downloading
             self._set_state("downloading")
+            
+            # Update external preview panel state
+            if self._external_preview_panel:
+                self._external_preview_panel.set_downloading_state(True)
             
             # Run download in background thread with parallel processing (Requirements 9.1)
             def download_in_thread():
@@ -1347,18 +1423,26 @@ class EnhancedManualPanel(ttk.Frame):
                             summary_msg += f"Lỗi: {error_count}\n"
                         
                         self.after(0, lambda: messagebox.showinfo("Đã dừng", summary_msg))
-                        self.after(0, lambda: self.preview_status_label.config(
-                            text=f"Đã dừng: {success_count}/{total} thành công (đa luồng)",
-                            foreground="orange"
-                        ))
+                        if not self._hide_preview_section and hasattr(self, 'preview_status_label'):
+                            self.after(0, lambda: self.preview_status_label.config(
+                                text=f"Đã dừng: {success_count}/{total} thành công (đa luồng)",
+                                foreground="orange"
+                            ))
+                        elif self._external_preview_panel:
+                            self.after(0, lambda: self._external_preview_panel.update_status(
+                                f"Đã dừng: {success_count}/{total} thành công (đa luồng)"))
                     else:
                         # Show custom result popup with "Open folder" button
                         self.after(0, lambda sc=success_count, ec=error_count, sk=skipped_count, t=total: 
                             self._show_download_result_popup(sc, ec, sk, t))
-                        self.after(0, lambda: self.preview_status_label.config(
-                            text=f"Hoàn thành: {success_count}/{total} thành công (đa luồng)",
-                            foreground="green"
-                        ))
+                        if not self._hide_preview_section and hasattr(self, 'preview_status_label'):
+                            self.after(0, lambda: self.preview_status_label.config(
+                                text=f"Hoàn thành: {success_count}/{total} thành công (đa luồng)",
+                                foreground="green"
+                            ))
+                        elif self._external_preview_panel:
+                            self.after(0, lambda: self._external_preview_panel.update_status(
+                                f"Hoàn thành: {success_count}/{total} thành công (đa luồng)"))
                     
                     self._log('info', f"Download completed: {success_count} success, {error_count} errors, {skipped_count} skipped")
                     
@@ -1369,6 +1453,12 @@ class EnhancedManualPanel(ttk.Frame):
                     
                     # Refresh recent companies panel (Requirements 11.3)
                     self.after(0, self._load_recent_companies)
+                    
+                    # Update external preview panel - enable retry if errors
+                    if self._external_preview_panel:
+                        self.after(0, lambda: self._external_preview_panel.set_downloading_state(False))
+                        if error_count > 0:
+                            self.after(0, lambda: self._external_preview_panel.enable_retry_button(True))
                 
                 except Exception as e:
                     self._log('error', f"Download thread failed: {e}", exc_info=True)
@@ -1541,13 +1631,18 @@ class EnhancedManualPanel(ttk.Frame):
             self.preview_manager.cancel_preview()
             
             # Update UI to show cancellation
-            self.preview_status_label.config(
-                text="Đã hủy xem trước",
-                foreground="orange"
-            )
+            if not self._hide_preview_section and hasattr(self, 'preview_status_label'):
+                self.preview_status_label.config(
+                    text="Đã hủy xem trước",
+                    foreground="orange"
+                )
+            elif self._external_preview_panel:
+                self._external_preview_panel.update_status("Đã hủy xem trước")
+                self._external_preview_panel.clear()
             
-            # Disable cancel button immediately
-            self.cancel_button.config(state=tk.DISABLED)
+            # Disable cancel button immediately (if exists)
+            if hasattr(self, 'cancel_button') and self.cancel_button:
+                self.cancel_button.config(state=tk.DISABLED)
             
             # Return to appropriate state based on whether we have companies
             if self.company_combo['values'] and len(self.company_combo['values']) > 1:
@@ -1646,9 +1741,13 @@ class EnhancedManualPanel(ttk.Frame):
         Requirements: 4.2, 4.3
         """
         try:
-            # Get failed declarations from controller
+            # Get failed declarations from controller or external preview panel
             failed_declaration_numbers = []
-            if hasattr(self, '_preview_table_controller'):
+            if self._hide_preview_section and self._external_preview_panel:
+                # Get from external preview panel (two-column layout)
+                failed_declaration_numbers = self._external_preview_panel.get_failed_declarations()
+            elif hasattr(self, '_preview_table_controller'):
+                # Get from internal controller (single-column layout)
                 failed_declaration_numbers = self._preview_table_controller.get_failed_declarations()
             
             if not failed_declaration_numbers:
@@ -1768,10 +1867,14 @@ class EnhancedManualPanel(ttk.Frame):
                         summary_msg += f"Vẫn thất bại: {error_count}\n"
                     
                     self.after(0, lambda: messagebox.showinfo("Hoàn thành", summary_msg))
-                    self.after(0, lambda: self.preview_status_label.config(
-                        text=f"Tải lại hoàn thành: {success_count}/{total} thành công",
-                        foreground="green" if error_count == 0 else "orange"
-                    ))
+                    if not self._hide_preview_section and hasattr(self, 'preview_status_label'):
+                        self.after(0, lambda: self.preview_status_label.config(
+                            text=f"Tải lại hoàn thành: {success_count}/{total} thành công",
+                            foreground="green" if error_count == 0 else "orange"
+                        ))
+                    elif self._external_preview_panel:
+                        self.after(0, lambda: self._external_preview_panel.update_status(
+                            f"Tải lại hoàn thành: {success_count}/{total} thành công"))
                     
                     self._log('info', f"Retry completed: {success_count} success, {error_count} still failed")
                     
@@ -1847,6 +1950,15 @@ class EnhancedManualPanel(ttk.Frame):
     
     def toggle_select_all(self) -> None:
         """Toggle select all checkboxes - only affects visible (filtered) declarations"""
+        # Skip if preview section is hidden (using external preview panel)
+        if self._hide_preview_section:
+            # Delegate to external preview panel if available
+            # Use _update_select_all_ui to avoid recursion (don't call _on_select_all_change)
+            if self._external_preview_panel:
+                select_all = self._external_preview_panel._select_all_var.get()
+                self._external_preview_panel._update_select_all_ui(select_all)
+            return
+            
         select_all = self.select_all_var.get()
         
         if select_all:
@@ -1862,6 +1974,10 @@ class EnhancedManualPanel(ttk.Frame):
     
     def _select_visible_declarations(self) -> None:
         """Select only declarations that are currently visible in the tree view"""
+        # Skip if preview section is hidden
+        if self._hide_preview_section:
+            return
+            
         # Get all declaration numbers from the tree view (visible items)
         visible_declaration_numbers = set()
         for item in self.preview_tree.get_children():
@@ -1879,6 +1995,10 @@ class EnhancedManualPanel(ttk.Frame):
     
     def _deselect_visible_declarations(self) -> None:
         """Deselect only declarations that are currently visible in the tree view"""
+        # Skip if preview section is hidden
+        if self._hide_preview_section:
+            return
+            
         # Get all declaration numbers from the tree view (visible items)
         visible_declaration_numbers = set()
         for item in self.preview_tree.get_children():
@@ -1980,6 +2100,10 @@ class EnhancedManualPanel(ttk.Frame):
         Requirements: 3.3, 3.4
         """
         if not hasattr(self, '_column_headings'):
+            return
+        
+        # Skip if preview section is hidden
+        if self._hide_preview_section:
             return
         
         # Sort indicators
@@ -2293,18 +2417,9 @@ class EnhancedManualPanel(ttk.Frame):
     
     def _populate_preview_table(self, declarations: List[Declaration]) -> None:
         """Populate preview table with declarations and alternating row colors (Requirement 4.8)"""
-        # Clear existing items
-        for item in self.preview_tree.get_children():
-            self.preview_tree.delete(item)
+        # Build items list for both internal and external preview
+        preview_items = []
         
-        # Clear controller data
-        if hasattr(self, '_preview_table_controller'):
-            self._preview_table_controller.clear()
-        
-        # Build items list for controller
-        controller_items = []
-        
-        # Add declarations with alternating row colors
         for index, decl in enumerate(declarations):
             # Format date
             try:
@@ -2324,31 +2439,7 @@ class EnhancedManualPanel(ttk.Frame):
             bill_of_lading = decl.bill_of_lading if decl.bill_of_lading else ""
             invoice_number = decl.invoice_number if decl.invoice_number else ""
             
-            # Determine row tag for alternating colors (Requirement 4.8)
-            row_tag = 'evenrow' if index % 2 == 0 else 'oddrow'
-            
-            # Insert into tree with alternating row tag
-            # Default to unchecked (Requirement 4.1)
-            self.preview_tree.insert(
-                "",
-                tk.END,
-                values=(
-                    index + 1,  # STT (số thứ tự)
-                    "☐",  # Checkbox (unchecked by default - Requirement 4.1)
-                    decl.declaration_number,
-                    decl.tax_code,
-                    date_str,
-                    status_display,
-                    declaration_type,
-                    bill_of_lading,
-                    invoice_number,
-                    ""  # Result column (empty until download)
-                ),
-                tags=(row_tag,)
-            )
-            
-            # Store item for controller (Requirements 3.1-3.6)
-            controller_items.append({
+            preview_items.append({
                 'stt': index + 1,
                 'checkbox': '☐',
                 'declaration_number': decl.declaration_number,
@@ -2361,17 +2452,63 @@ class EnhancedManualPanel(ttk.Frame):
                 'result': ''
             })
         
+        # If using external preview panel (two-column layout)
+        if self._hide_preview_section and self._external_preview_panel:
+            self._external_preview_panel.populate_preview(preview_items)
+            return
+        
+        # Internal preview table (original behavior)
+        if not hasattr(self, 'preview_tree') or self.preview_tree is None:
+            return
+            
+        # Clear existing items
+        for item in self.preview_tree.get_children():
+            self.preview_tree.delete(item)
+        
+        # Clear controller data
+        if hasattr(self, '_preview_table_controller'):
+            self._preview_table_controller.clear()
+        
+        # Add declarations with alternating row colors
+        for index, item_data in enumerate(preview_items):
+            # Determine row tag for alternating colors (Requirement 4.8)
+            row_tag = 'evenrow' if index % 2 == 0 else 'oddrow'
+            
+            # Insert into tree with alternating row tag
+            self.preview_tree.insert(
+                "",
+                tk.END,
+                values=(
+                    item_data['stt'],
+                    item_data['checkbox'],
+                    item_data['declaration_number'],
+                    item_data['tax_code'],
+                    item_data['date'],
+                    item_data['status'],
+                    item_data['declaration_type'],
+                    item_data['bill_of_lading'],
+                    item_data['invoice_number'],
+                    item_data['result']
+                ),
+                tags=(row_tag,)
+            )
+        
         # Store items in controller for filtering/sorting
         if hasattr(self, '_preview_table_controller'):
-            self._preview_table_controller.store_items(controller_items)
-            # Reset filter to "All"
-            self.filter_var.set("Tất cả")
+            self._preview_table_controller.store_items(preview_items)
+            # Reset filter to "All" (only if filter_var exists)
+            if hasattr(self, 'filter_var'):
+                self.filter_var.set("Tất cả")
         
         # Update selection count
         self._update_selection_count()
     
     def _update_all_checkboxes(self, selected: bool) -> None:
         """Update all checkboxes in preview table"""
+        # Skip if preview section is hidden
+        if self._hide_preview_section:
+            return
+            
         checkbox_value = "☑" if selected else "☐"
         
         for item in self.preview_tree.get_children():
@@ -2404,22 +2541,28 @@ class EnhancedManualPanel(ttk.Frame):
             file_path: Path to downloaded PDF file (for double-click to open)
             error_message: Error message if failed (for tooltip display)
         """
-        for item in self.preview_tree.get_children():
-            values = list(self.preview_tree.item(item, "values"))
-            if len(values) > 2 and values[2] == declaration_number:
-                # Update result column (last column, index 9)
-                # Use larger/bolder Unicode symbols for better visibility
-                values[9] = "✔" if success else "✘"  # Heavy check mark and heavy ballot X
-                self.preview_tree.item(item, values=values)
-                
-                # Apply color tag for result
-                current_tags = list(self.preview_tree.item(item, "tags"))
-                # Remove any existing result tags
-                current_tags = [t for t in current_tags if t not in ('success_result', 'error_result')]
-                # Add new result tag
-                current_tags.append('success_result' if success else 'error_result')
-                self.preview_tree.item(item, tags=current_tags)
-                break
+        # Update external preview panel if using two-column layout
+        if self._hide_preview_section and self._external_preview_panel:
+            result_text = "✔" if success else "✘"
+            self._external_preview_panel.update_item_result(declaration_number, result_text, success)
+        elif hasattr(self, 'preview_tree') and self.preview_tree:
+            # Update internal preview tree
+            for item in self.preview_tree.get_children():
+                values = list(self.preview_tree.item(item, "values"))
+                if len(values) > 2 and values[2] == declaration_number:
+                    # Update result column (last column, index 9)
+                    # Use larger/bolder Unicode symbols for better visibility
+                    values[9] = "✔" if success else "✘"  # Heavy check mark and heavy ballot X
+                    self.preview_tree.item(item, values=values)
+                    
+                    # Apply color tag for result
+                    current_tags = list(self.preview_tree.item(item, "tags"))
+                    # Remove any existing result tags
+                    current_tags = [t for t in current_tags if t not in ('success_result', 'error_result')]
+                    # Add new result tag
+                    current_tags.append('success_result' if success else 'error_result')
+                    self.preview_tree.item(item, tags=current_tags)
+                    break
         
         # Update controller data (Requirements 3.5, 3.6, 4.1, 4.2, 4.3)
         if hasattr(self, '_preview_table_controller'):
@@ -2431,6 +2574,10 @@ class EnhancedManualPanel(ttk.Frame):
     
     def _update_selection_count(self) -> None:
         """Update selection count label - counts only visible declarations"""
+        # Skip if preview section is hidden (using external preview panel)
+        if self._hide_preview_section:
+            return
+            
         # Count visible declarations in tree view
         visible_total = len(self.preview_tree.get_children())
         
@@ -2555,6 +2702,12 @@ class EnhancedManualPanel(ttk.Frame):
         """
         self.current_state = state
         
+        # Helper to safely configure button state (handles hide_preview_section mode)
+        def safe_config(widget_name: str, **kwargs) -> None:
+            widget = getattr(self, widget_name, None)
+            if widget is not None:
+                widget.config(**kwargs)
+        
         if state == "initial":
             # State 1: Initial (only scan button enabled)
             self.scan_button.config(state=tk.NORMAL)
@@ -2562,10 +2715,10 @@ class EnhancedManualPanel(ttk.Frame):
             self.company_combo.config(state=tk.DISABLED)
             self.from_date_entry.config(state=tk.DISABLED)
             self.to_date_entry.config(state=tk.DISABLED)
-            self.preview_button.config(state=tk.DISABLED)
-            self.download_button.config(state=tk.DISABLED)
-            self.cancel_button.config(state=tk.DISABLED)
-            self.stop_button.config(state=tk.DISABLED)
+            safe_config('preview_button', state=tk.DISABLED)
+            safe_config('download_button', state=tk.DISABLED)
+            safe_config('cancel_button', state=tk.DISABLED)
+            safe_config('stop_button', state=tk.DISABLED)
             
         elif state == "companies_loaded":
             # State 2: Companies loaded (enable dropdown and dates)
@@ -2575,10 +2728,10 @@ class EnhancedManualPanel(ttk.Frame):
             self.company_combo.config(state=tk.NORMAL)
             self.from_date_entry.config(state=tk.NORMAL)
             self.to_date_entry.config(state=tk.NORMAL)
-            self.preview_button.config(state=tk.NORMAL)
-            self.download_button.config(state=tk.DISABLED)
-            self.cancel_button.config(state=tk.DISABLED)
-            self.stop_button.config(state=tk.DISABLED)
+            safe_config('preview_button', state=tk.NORMAL)
+            safe_config('download_button', state=tk.DISABLED)
+            safe_config('cancel_button', state=tk.DISABLED)
+            safe_config('stop_button', state=tk.DISABLED)
             
         elif state == "preview_displayed":
             # State 3: Preview displayed (enable download button)
@@ -2588,10 +2741,10 @@ class EnhancedManualPanel(ttk.Frame):
             self.company_combo.config(state=tk.NORMAL)
             self.from_date_entry.config(state=tk.NORMAL)
             self.to_date_entry.config(state=tk.NORMAL)
-            self.preview_button.config(state=tk.NORMAL)
-            self.download_button.config(state=tk.NORMAL)
-            self.cancel_button.config(state=tk.DISABLED)
-            self.stop_button.config(state=tk.DISABLED)
+            safe_config('preview_button', state=tk.NORMAL)
+            safe_config('download_button', state=tk.NORMAL)
+            safe_config('cancel_button', state=tk.DISABLED)
+            safe_config('stop_button', state=tk.DISABLED)
             
         elif state == "downloading":
             # State 4: Downloading (disable inputs, show stop button)
@@ -2600,10 +2753,10 @@ class EnhancedManualPanel(ttk.Frame):
             self.company_combo.config(state=tk.DISABLED)
             self.from_date_entry.config(state=tk.DISABLED)
             self.to_date_entry.config(state=tk.DISABLED)
-            self.preview_button.config(state=tk.DISABLED)
-            self.download_button.config(state=tk.DISABLED)
-            self.cancel_button.config(state=tk.DISABLED)
-            self.stop_button.config(state=tk.NORMAL)
+            safe_config('preview_button', state=tk.DISABLED)
+            safe_config('download_button', state=tk.DISABLED)
+            safe_config('cancel_button', state=tk.DISABLED)
+            safe_config('stop_button', state=tk.NORMAL)
             
         elif state == "complete":
             # State 5: Complete (re-enable all)
@@ -2613,18 +2766,21 @@ class EnhancedManualPanel(ttk.Frame):
             self.company_combo.config(state=tk.NORMAL)
             self.from_date_entry.config(state=tk.NORMAL)
             self.to_date_entry.config(state=tk.NORMAL)
-            self.preview_button.config(state=tk.NORMAL)
-            self.download_button.config(state=tk.NORMAL)
-            self.cancel_button.config(state=tk.DISABLED)
-            self.stop_button.config(state=tk.DISABLED)
+            safe_config('preview_button', state=tk.NORMAL)
+            safe_config('download_button', state=tk.NORMAL)
+            safe_config('cancel_button', state=tk.DISABLED)
+            safe_config('stop_button', state=tk.DISABLED)
     
     def set_download_complete(self) -> None:
         """Called when download operation completes"""
         self._set_state("complete")
-        self.preview_status_label.config(
-            text="Hoàn thành tải mã vạch",
-            foreground="green"
-        )
+        if hasattr(self, 'preview_status_label') and self.preview_status_label:
+            self.preview_status_label.config(
+                text="Hoàn thành tải mã vạch",
+                foreground="green"
+            )
+        elif self._external_preview_panel:
+            self._external_preview_panel.update_status("Hoàn thành tải mã vạch")
     
     def _update_progress(self, progress: int, current: int, total: int) -> None:
         """
@@ -2635,8 +2791,15 @@ class EnhancedManualPanel(ttk.Frame):
             current: Current item number
             total: Total items
         """
-        self.progress_bar['value'] = progress
-        self.progress_label.config(
-            text=f"Đang xử lý {current}/{total}...",
-            foreground="blue"
-        )
+        if hasattr(self, 'progress_bar') and self.progress_bar:
+            self.progress_bar['value'] = progress
+        if hasattr(self, 'progress_label') and self.progress_label:
+            self.progress_label.config(
+                text=f"Đang xử lý {current}/{total}...",
+                foreground="blue"
+            )
+        
+        # Also update external preview panel if available
+        if self._external_preview_panel:
+            self._external_preview_panel.update_progress(progress, current, total)
+            self._external_preview_panel.update_status(f"Đang xử lý {current}/{total}...")

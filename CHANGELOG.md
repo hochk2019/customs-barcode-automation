@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.3.2] - 2024-12-15
+
+### ✨ New Features
+- **Two-Column Layout**: Giao diện 2 cột tối ưu với Control Panel (trái) và Preview Panel (phải)
+- **Enhanced Preview Panel**: Thêm cột STT, Loại hình, Vận đơn, Số hóa đơn
+- **Button Improvements**: Font in đậm, hiệu ứng hover rõ ràng với tk.Button
+- **Smart Button States**: Nút "Dừng" và "Tải lại lỗi" có trạng thái chìm/nổi thông minh
+- **Recent Companies Grid**: Layout 5 nút/hàng tránh chồng lấn khi hiển thị 10 MST
+
+### 🎨 UI/UX Improvements
+- **Responsive Layout**: Tự động điều chỉnh theo kích thước cửa sổ
+- **Better Spacing**: Cải thiện khoảng cách giữa các nút (padx=5, width=14)
+- **Color Consistency**: Text tư vấn hải quan dùng màu vàng sẫm (#d4a853)
+- **Visual Feedback**: Trạng thái nút rõ ràng hơn với sunken/raised effects
+
+### 🔧 Technical Improvements
+- **Grid Layout**: Recent companies sử dụng grid thay vì pack để tránh overflow
+- **Hover Effects**: Custom hover binding cho tk.Button với màu sắc phù hợp
+- **State Management**: Cải thiện quản lý trạng thái nút với _is_sunken flag
+
 ## [1.2.6] - 2024-12-12
 
 ### Fixed

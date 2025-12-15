@@ -82,6 +82,10 @@ class SettingsDialog:
         self.notifications_var: Optional[tk.BooleanVar] = None
         self.sound_var: Optional[tk.BooleanVar] = None
         self.batch_limit_var: Optional[tk.IntVar] = None
+        self.recent_companies_var: Optional[tk.IntVar] = None
+        
+        # Callback for recent companies count change
+        self.on_recent_companies_changed: Optional[callable] = None
         
         # Create and show dialog
         self._create_dialog()
@@ -91,7 +95,7 @@ class SettingsDialog:
         # Create dialog window
         self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("Cài đặt")
-        self.dialog.geometry("520x580")  # Increased height for notification and batch limit sections
+        self.dialog.geometry("520x650")  # Increased height for recent companies section
         self.dialog.resizable(False, False)
         self.dialog.transient(self.parent)
         self.dialog.grab_set()
@@ -134,6 +138,9 @@ class SettingsDialog:
         
         # Create batch limit section (Requirements 10.3)
         self._create_batch_limit_section(main_frame)
+        
+        # Create recent companies count section (Requirements 6.1, 6.2)
+        self._create_recent_companies_section(main_frame)
         
         # Gold separator before buttons
         tk.Frame(main_frame, bg=BRAND_GOLD_COLOR, height=2).pack(fill=tk.X, pady=(15, 15))
@@ -371,6 +378,53 @@ class SettingsDialog:
         )
         batch_spinbox.pack(side=tk.LEFT)
     
+    def _create_recent_companies_section(self, parent: tk.Frame) -> None:
+        """
+        Create recent companies count setting section.
+        
+        Implements Requirements 6.1, 6.2
+        
+        Args:
+            parent: Parent frame
+        """
+        # Section label
+        label = tk.Label(
+            parent,
+            text="Mã số thuế gần đây:",
+            font=("Segoe UI", 11),
+            fg=BRAND_TEXT_COLOR,
+            bg=BRAND_PRIMARY_COLOR
+        )
+        label.pack(anchor=tk.W, pady=(10, 5))
+        
+        # Recent companies frame
+        recent_frame = tk.Frame(parent, bg=BRAND_PRIMARY_COLOR)
+        recent_frame.pack(anchor=tk.W, pady=(0, 10))
+        
+        # Get current value from config (Requirement 6.1)
+        current_count = self.config_manager.get_recent_companies_count()
+        
+        # Recent companies spinbox (Requirement 6.2)
+        self.recent_companies_var = tk.IntVar(value=current_count)
+        
+        tk.Label(
+            recent_frame,
+            text="Số lượng mã số thuế gần đây hiển thị (3-10):",
+            font=("Segoe UI", 10),
+            fg=BRAND_TEXT_COLOR,
+            bg=BRAND_PRIMARY_COLOR
+        ).pack(side=tk.LEFT, padx=(0, 10))
+        
+        recent_spinbox = ttk.Spinbox(
+            recent_frame,
+            from_=3,
+            to=10,
+            textvariable=self.recent_companies_var,
+            width=5,
+            font=("Segoe UI", 10)
+        )
+        recent_spinbox.pack(side=tk.LEFT)
+    
     def _create_buttons(self, parent: tk.Frame) -> None:
         """
         Create save and cancel buttons.
@@ -459,6 +513,11 @@ class SettingsDialog:
             # Clamp to valid range
             batch_limit = max(1, min(50, batch_limit))
             
+            # Get recent companies count setting (Requirements 6.2, 6.3)
+            recent_companies_count = self.recent_companies_var.get() if self.recent_companies_var else 5
+            # Clamp to valid range
+            recent_companies_count = max(3, min(10, recent_companies_count))
+            
             # Save to config manager
             self.config_manager.set_retrieval_method(retrieval_method)
             self.config_manager.set_pdf_naming_format(pdf_naming_format)
@@ -466,6 +525,7 @@ class SettingsDialog:
             self.config_manager.set_notifications_enabled(notifications_enabled)
             self.config_manager.set_sound_enabled(sound_enabled)
             self.config_manager.set_batch_limit(batch_limit)
+            self.config_manager.set_recent_companies_count(recent_companies_count)
             
             # Persist to file
             self.config_manager.save()
@@ -473,6 +533,13 @@ class SettingsDialog:
             # Apply theme immediately if theme_manager is available (Requirement 7.6)
             if self.theme_manager:
                 self.theme_manager.apply_theme(theme)
+            
+            # Notify recent companies count change callback (Requirement 6.5)
+            if self.on_recent_companies_changed:
+                try:
+                    self.on_recent_companies_changed(recent_companies_count)
+                except Exception as callback_error:
+                    print(f"Warning: Recent companies callback failed: {callback_error}")
             
             # Notify callback if provided (to update BarcodeRetriever immediately)
             if self.on_settings_changed:

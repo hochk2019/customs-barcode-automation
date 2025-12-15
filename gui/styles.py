@@ -27,14 +27,22 @@ class ModernStyles:
     # Background Colors
     BG_PRIMARY = "#FFFFFF"         # White - main background
     BG_SECONDARY = "#F5F5F5"       # Light gray - secondary background
-    BG_TERTIARY = "#FAFAFA"        # Very light gray - alternate rows
+    BG_TERTIARY = "#FAFAFA"        # Very light gray - alternate rows / control panel (Requirement 7.1)
     BG_HOVER = "#E8E8E8"           # Hover state background
     BG_SELECTED = "#CCE4F7"        # Selected item background
+    
+    # Compact Section Colors (Requirement 7.1)
+    CONTROL_PANEL_BG_LIGHT = "#FAFAFA"  # Light theme control panel
+    CONTROL_PANEL_BG_DARK = "#252525"   # Dark theme control panel
     
     # Border Colors
     BORDER_COLOR = "#D1D1D1"       # Light border
     BORDER_FOCUS = "#0078D4"       # Focus border (matches primary)
     BORDER_SUBTLE = "#E5E5E5"      # Very subtle border
+    
+    # Consistent Border Colors (Requirement 7.2)
+    SECTION_BORDER_LIGHT = "#E0E0E0"  # Light theme section border
+    SECTION_BORDER_DARK = "#3A3A3A"   # Dark theme section border
     
     # Text Colors
     TEXT_PRIMARY = "#323130"       # Dark gray - main text
@@ -42,17 +50,23 @@ class ModernStyles:
     TEXT_DISABLED = "#A19F9D"      # Light gray - disabled text
     TEXT_ON_PRIMARY = "#FFFFFF"    # White text on primary color
     
-    # Font Definitions
+    # Font Definitions (Requirement 7.3)
     FONT_FAMILY = "Segoe UI"
-    FONT_SIZE_NORMAL = 9
-    FONT_SIZE_SMALL = 8
-    FONT_SIZE_LARGE = 11
+    FONT_SIZE_NORMAL = 9          # 9px ~ 11px at 96 DPI
+    FONT_SIZE_SMALL = 8           # 8px ~ 10px at 96 DPI (secondary text)
+    FONT_SIZE_LARGE = 11          # 11px labels
     FONT_SIZE_HEADER = 12
     
-    # Padding and Spacing
+    # Padding and Spacing (Requirement 7.4)
     PADDING_SMALL = 4
-    PADDING_NORMAL = 8
-    PADDING_LARGE = 12
+    PADDING_NORMAL = 8            # 8px between elements
+    PADDING_LARGE = 12            # 12px between sections
+    SECTION_SPACING = 12          # Spacing between sections
+    ELEMENT_SPACING = 8           # Spacing between elements
+    
+    # Button Heights (Requirement 7.5)
+    BUTTON_HEIGHT_PRIMARY = 28    # Primary button height
+    BUTTON_HEIGHT_SECONDARY = 24  # Secondary button height
     
     # Border Radius (for custom drawing)
     BORDER_RADIUS = 4
@@ -171,6 +185,45 @@ class ModernStyles:
             background=[
                 ('active', cls.BG_HOVER),
                 ('pressed', cls.BG_SELECTED)
+            ]
+        )
+        
+        # Warning button style (orange/yellow)
+        style.configure(
+            'Warning.TButton',
+            background='#FF9800',
+            foreground=cls.TEXT_ON_PRIMARY
+        )
+        style.map(
+            'Warning.TButton',
+            background=[
+                ('active', '#F57C00'),
+                ('pressed', '#E65100'),
+                ('disabled', '#BDBDBD')
+            ],
+            foreground=[
+                ('disabled', cls.TEXT_DISABLED)
+            ]
+        )
+        
+        # Pill-shaped button style for recent companies (Requirement 4.3)
+        style.configure(
+            'Pill.TButton',
+            background=cls.BG_SECONDARY,
+            foreground=cls.TEXT_PRIMARY,
+            borderwidth=1,
+            padding=(cls.PADDING_NORMAL, cls.PADDING_SMALL - 2),
+            font=(cls.FONT_FAMILY, cls.FONT_SIZE_SMALL)
+        )
+        style.map(
+            'Pill.TButton',
+            background=[
+                ('active', cls.BG_HOVER),
+                ('pressed', cls.BG_SELECTED),
+                ('disabled', cls.BG_SECONDARY)
+            ],
+            foreground=[
+                ('disabled', cls.TEXT_DISABLED)
             ]
         )
     

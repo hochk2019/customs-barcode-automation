@@ -15,7 +15,7 @@ def get_app_version():
     except ImportError:
         return "1.3.1"  # Fallback version
 
-APP_VERSION = "1.3.1"  # Keep in sync with main.py
+APP_VERSION = "1.3.2"  # Keep in sync with main.py
 APP_NAME = "Customs Barcode Automation"
 APP_FULL_NAME = f"{APP_NAME} v{APP_VERSION}"
 
@@ -26,7 +26,7 @@ COMPANY_SLOGAN = "Chuyên làm thủ tục HQ - Vận chuyển hàng toàn quố
 COMPANY_MOTTO = '"Thích thì thuê - Không thích thì chê - Nhưng đừng bỏ!"'
 
 # Designer Information
-DESIGNER_NAME = "Học HK"
+DESIGNER_NAME = "Liên hệ để được tư vấn thủ tục hải quan miễn phí - đúng quy định - có lợi nhất cho DN về lâu dài!"
 DESIGNER_EMAIL = "Hochk2019@gmail.com"
 DESIGNER_PHONE = "0868.333.606"
 

@@ -804,3 +804,65 @@ class ConfigurationManager:
         self.config.set('UI', 'window_y', str(y))
         self.config.set('UI', 'window_width', str(max(800, width)))
         self.config.set('UI', 'window_height', str(max(600, height)))
+    
+    # ==================== Layout Optimization Settings ====================
+    
+    def get_panel_split_position(self) -> float:
+        """
+        Get panel split position (ratio of left panel width to total width).
+        
+        Returns:
+            Split position as float (0.25-0.50, default 0.38)
+            
+        Requirements: 8.3, 8.4
+        """
+        try:
+            position = self.config.getfloat('UI', 'panel_split_position', fallback=0.38)
+            # Clamp to valid range
+            return max(0.25, min(0.50, position))
+        except (ValueError, TypeError):
+            return 0.38
+    
+    def set_panel_split_position(self, position: float) -> None:
+        """
+        Set panel split position.
+        
+        Args:
+            position: Split position ratio (will be clamped to 0.25-0.50)
+            
+        Requirements: 8.3
+        """
+        # Clamp to valid range
+        position = max(0.25, min(0.50, float(position)))
+        self._ensure_ui_section()
+        self.config.set('UI', 'panel_split_position', str(position))
+    
+    def get_recent_companies_count(self) -> int:
+        """
+        Get number of recent companies to display.
+        
+        Returns:
+            Recent companies count (3-10, default 5)
+            
+        Requirements: 6.3, 6.4
+        """
+        try:
+            count = self.config.getint('UI', 'recent_companies_count', fallback=5)
+            # Clamp to valid range
+            return max(3, min(10, count))
+        except (ValueError, TypeError):
+            return 5
+    
+    def set_recent_companies_count(self, count: int) -> None:
+        """
+        Set number of recent companies to display.
+        
+        Args:
+            count: Number of recent companies (will be clamped to 3-10)
+            
+        Requirements: 6.2
+        """
+        # Clamp to valid range
+        count = max(3, min(10, int(count)))
+        self._ensure_ui_section()
+        self.config.set('UI', 'recent_companies_count', str(count))

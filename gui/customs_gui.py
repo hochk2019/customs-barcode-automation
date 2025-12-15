@@ -34,6 +34,11 @@ from gui.theme_manager import ThemeManager
 from gui.notification_manager import NotificationManager
 from gui.window_state import WindowStateManager
 from database.backup_service import BackupService
+from gui.two_column_layout import TwoColumnLayout
+from gui.compact_status_bar import CompactStatusBar
+from gui.compact_output_section import CompactOutputSection
+from gui.compact_company_section import CompactCompanySection
+from gui.preview_panel import PreviewPanel
 from gui.branding import (
     APP_VERSION, APP_NAME, APP_FULL_NAME, WINDOW_TITLE,
     COMPANY_NAME, COMPANY_SLOGAN, COMPANY_MOTTO,
@@ -100,9 +105,9 @@ class CustomsAutomationGUI:
         # GUI state (is_running removed - Automatic mode no longer supported per Requirements 1.4)
         self.selected_declarations: List[ProcessedDeclaration] = []
         
-        # Setup window with responsive layout (Requirements 1.4)
+        # Setup window with responsive layout (Requirements 1.4, 9.3)
         self.root.title(WINDOW_TITLE)
-        self.root.minsize(900, 600)  # Minimum size to prevent layout breakage
+        self.root.minsize(1000, 700)  # Minimum size for two-column layout
         
         # Initialize WindowStateManager and restore window state (Requirements 6.1, 6.2, 6.3, 6.4)
         self.window_state_manager = WindowStateManager(self.root, self.config_manager)
@@ -125,11 +130,9 @@ class CustomsAutomationGUI:
         # Initialize NotificationManager for desktop notifications (Requirements 2.1, 2.2)
         self.notification_manager = NotificationManager(self.config_manager)
         
-        # Create GUI components (Responsive layout - Requirements 9.1)
+        # Create GUI components (Two-column layout - Requirements 1.1)
         self._create_header_banner()
-        self._create_control_panel()
-        self._create_processed_declarations_panel()
-        # Recent Logs panel removed per Requirements 9.1 to save vertical space
+        self._create_two_column_layout()  # New two-column layout
         self._create_footer()
         
         # Load initial data
@@ -339,10 +342,11 @@ class CustomsAutomationGUI:
         # Designer info below version
         designer_header_label = tk.Label(
             right_frame,
-            text=f"Designer: {DESIGNER_NAME}",
-            font=("Segoe UI", 9),
-            fg=BRAND_TEXT_COLOR,
-            bg=BRAND_PRIMARY_COLOR
+            text=DESIGNER_NAME,
+            font=("Segoe UI", 8),  # Smaller font for long text
+            fg=BRAND_ACCENT_COLOR,
+            bg=BRAND_PRIMARY_COLOR,
+            wraplength=300  # Wrap text if too long
         )
         designer_header_label.pack(anchor=tk.E, pady=(2, 0))
     
@@ -359,9 +363,9 @@ class CustomsAutomationGUI:
         # Left: Designer info
         designer_label = tk.Label(
             footer_content,
-            text=f"Designer: {DESIGNER_NAME}",
+            text=DESIGNER_NAME,
             font=("Segoe UI", 9),
-            fg=BRAND_TEXT_COLOR,
+            fg=BRAND_ACCENT_COLOR,
             bg=BRAND_PRIMARY_COLOR
         )
         designer_label.pack(side=tk.LEFT, pady=5)
@@ -599,13 +603,14 @@ class CustomsAutomationGUI:
         # Gold separator
         tk.Frame(main_frame, bg=BRAND_GOLD_COLOR, height=2).pack(fill=tk.X, padx=40, pady=8)
         
-        # Designer info - White
+        # Designer info - Gold accent
         tk.Label(
             main_frame,
-            text=f"Designer: {DESIGNER_NAME}",
-            font=("Segoe UI", 12, "bold"),
-            fg=BRAND_TEXT_COLOR,
-            bg=BRAND_PRIMARY_COLOR
+            text=DESIGNER_NAME,
+            font=("Segoe UI", 10, "bold"),  # Smaller font for long text
+            fg=BRAND_ACCENT_COLOR,
+            bg=BRAND_PRIMARY_COLOR,
+            wraplength=400  # Wrap text if too long
         ).pack(pady=(8, 5))
         
         # Email - Gold accent
@@ -666,122 +671,224 @@ class CustomsAutomationGUI:
         # Bind Escape key
         dialog.bind('<Escape>', lambda e: dialog.destroy())
     
-    def _create_control_panel(self) -> None:
-        """Create control panel frame with status display and controls"""
-        # Main control frame
-        control_frame = ttk.LabelFrame(self.root, text="Control Panel", padding=10)
-        control_frame.pack(fill=tk.X, padx=10, pady=5)
+    def _create_two_column_layout(self) -> None:
+        """
+        Create two-column layout with Control Panel on left and Preview Panel on right.
         
-        # Combined Status and Statistics row (compact horizontal layout)
-        status_stats_frame = ttk.Frame(control_frame)
-        status_stats_frame.pack(fill=tk.X, pady=5)
-        
-        # Status section
-        ttk.Label(
-            status_stats_frame, 
-            text="Status:", 
-            font=(ModernStyles.FONT_FAMILY, ModernStyles.FONT_SIZE_NORMAL, "bold")
-        ).pack(side=tk.LEFT, padx=5)
-        self.status_label = ttk.Label(
-            status_stats_frame, 
-            text="● Ready", 
-            foreground=ModernStyles.INFO_COLOR, 
-            font=(ModernStyles.FONT_FAMILY, ModernStyles.FONT_SIZE_NORMAL)
+        Requirements: 1.1, 1.2, 1.4, 8.1, 8.2
+        """
+        # Create TwoColumnLayout container
+        self.two_column_layout = TwoColumnLayout(
+            self.root,
+            config_manager=self.config_manager
         )
-        self.status_label.pack(side=tk.LEFT, padx=5)
+        self.two_column_layout.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
-        # Database connection status
-        ttk.Label(
-            status_stats_frame, 
-            text="  |  DB:", 
-            font=(ModernStyles.FONT_FAMILY, ModernStyles.FONT_SIZE_NORMAL, "bold")
-        ).pack(side=tk.LEFT, padx=5)
-        self.db_status_label = ttk.Label(
-            status_stats_frame, 
-            text="● Checking...", 
-            foreground=ModernStyles.WARNING_COLOR, 
-            font=(ModernStyles.FONT_FAMILY, ModernStyles.FONT_SIZE_NORMAL)
-        )
-        self.db_status_label.pack(side=tk.LEFT, padx=5)
+        # Get pane references
+        left_pane = self.two_column_layout.get_left_pane()
+        right_pane = self.two_column_layout.get_right_pane()
         
-        # Database configuration button
-        db_config_button = ttk.Button(
-            status_stats_frame, 
-            text="⚙ Cấu hình DB", 
-            command=self._show_database_config_dialog,
-            width=14
-        )
-        db_config_button.pack(side=tk.LEFT, padx=10)
+        # === LEFT PANE: Control Panel ===
+        self._create_left_pane_content(left_pane)
         
-        # Settings button (Requirements 1.1, 5.1)
-        settings_button = ttk.Button(
-            status_stats_frame,
-            text="⚙ Cài đặt",
-            command=self._show_settings_dialog,
-            width=12
-        )
-        settings_button.pack(side=tk.LEFT, padx=5)
+        # === RIGHT PANE: Preview Panel ===
+        self._create_right_pane_content(right_pane)
         
         # Check database connection in background
         self._check_database_connection()
         
-        # Set scheduler to Manual mode by default (Automatic mode removed per Requirements 1.1, 1.2, 1.3)
+        # Set scheduler to Manual mode by default
         self.scheduler.set_operation_mode(OperationMode.MANUAL)
         
-        # Statistics section using StatisticsBar component (Requirements 7.1, 7.2)
-        self.statistics_bar = StatisticsBar(control_frame)
-        self.statistics_bar.pack(fill=tk.X, pady=5)
+        # Keep output_path_var for compatibility
+        self.output_path_var = tk.StringVar(value=self.config_manager.get_output_path())
+    
+    def _create_left_pane_content(self, parent: ttk.Frame) -> None:
+        """
+        Create left pane content - Control Panel with compact layout.
+        
+        Layout:
+        - Compact Status Bar (status + DB status + buttons)
+        - Statistics Bar
+        - EnhancedManualPanel (without preview table - moved to right pane)
+        
+        Requirements: 2.1, 3.1, 4.1
+        """
+        # Compact Status Bar (40px) - Requirements 2.1, 2.2, 2.3, 2.4
+        self.compact_status_bar = CompactStatusBar(parent)
+        self.compact_status_bar.pack(fill=tk.X, pady=(0, 5))
+        self.compact_status_bar.set_db_config_command(self._show_database_config_dialog)
+        self.compact_status_bar.set_settings_command(self._show_settings_dialog)
+        
+        # Keep references for backward compatibility
+        self.status_label = self.compact_status_bar.status_indicator
+        self.db_status_label = self.compact_status_bar.db_indicator
+        
+        # Statistics bar
+        self.statistics_bar = StatisticsBar(parent)
+        self.statistics_bar.pack(fill=tk.X, pady=(0, 5))
         
         # Keep references for backward compatibility
         self.processed_label = self.statistics_bar.processed_label
         self.success_label = self.statistics_bar.retrieved_label
         self.errors_label = self.statistics_bar.errors_label
         self.last_run_label = self.statistics_bar.last_run_label
-        self.last_run_label.pack(side=tk.LEFT, padx=(0, 5))
         
-        # Start/Stop/Run Once buttons removed per Requirements 1.4
-        # The EnhancedManualPanel provides all necessary controls for manual operation
-        
-        # Enhanced Manual Mode Panel
         # Initialize CompanyScanner and PreviewManager
-        company_scanner = CompanyScanner(
+        self.company_scanner = CompanyScanner(
             ecus_connector=self.ecus_connector,
             tracking_db=self.tracking_db,
             logger=self.logger
         )
         
-        preview_manager = PreviewManager(
+        self.preview_manager = PreviewManager(
             ecus_connector=self.ecus_connector,
             logger=self.logger
         )
         
-        # Create EnhancedManualPanel with download complete callback
+        # Enhanced Manual Panel - contains output dir, company selection, date range
+        # Preview table will be hidden and moved to right pane
         self.enhanced_manual_panel = EnhancedManualPanel(
-            parent=control_frame,
-            company_scanner=company_scanner,
-            preview_manager=preview_manager,
+            parent=parent,
+            company_scanner=self.company_scanner,
+            preview_manager=self.preview_manager,
             logger=self.logger,
             barcode_retriever=self.barcode_retriever,
             file_manager=self.file_manager,
             tracking_db=self.tracking_db,
-            on_download_complete=self._on_download_complete
+            on_download_complete=self._on_download_complete,
+            hide_preview_section=True  # Hide preview table - moved to right pane
         )
-        self.enhanced_manual_panel.pack(fill=tk.BOTH, expand=True, pady=10)
+        self.enhanced_manual_panel.pack(fill=tk.BOTH, expand=True, pady=5)
+    
+    def _create_right_pane_content(self, parent: ttk.Frame) -> None:
+        """
+        Create right pane content with Preview Panel.
         
-        # Output directory configuration moved to EnhancedManualPanel (Requirements 3.1, 3.2, 3.3)
-        # Keep output_path_var for compatibility with other methods
-        self.output_path_var = tk.StringVar(value=self.config_manager.get_output_path())
+        Requirements: 5.1, 5.2, 5.3, 5.4, 5.5
+        """
+        # Preview Panel - Requirements 5.1, 5.2, 5.3, 5.4, 5.5
+        self.preview_panel = PreviewPanel(
+            parent,
+            on_preview=self._on_preview_click,
+            on_download=self._on_download_click,
+            on_cancel=self._on_cancel_click,
+            on_stop=self._on_stop_click,
+            on_export_log=self._on_export_log_click,
+            on_select_all=self._on_select_all_change,
+            on_retry_failed=self._on_retry_failed_click,
+            on_include_pending_changed=self._on_include_pending_changed,
+            on_exclude_xnktc_changed=self._on_exclude_xnktc_changed
+        )
+        self.preview_panel.pack(fill=tk.BOTH, expand=True)
+        
+        # Connect EnhancedManualPanel to PreviewPanel for two-column layout
+        if hasattr(self, 'enhanced_manual_panel'):
+            self.enhanced_manual_panel.set_external_preview_panel(self.preview_panel)
+    
+    def _on_output_path_changed(self, path: str) -> None:
+        """Handle output path change from CompactOutputSection."""
+        self.config_manager.set_output_path(path)
+        self.config_manager.save()
+        self.output_path_var.set(path)
+        self.logger.info(f"Output directory changed to: {path}")
+    
+    def _on_company_selected(self, tax_code: str) -> None:
+        """Handle company selection from CompactCompanySection."""
+        self.logger.info(f"Company selected: {tax_code}")
+        # Sync with EnhancedManualPanel if needed
+        if hasattr(self, 'enhanced_manual_panel'):
+            self.enhanced_manual_panel.company_combo.set(tax_code)
+    
+    def _on_scan_companies(self) -> None:
+        """Handle scan companies button click."""
+        if hasattr(self, 'enhanced_manual_panel'):
+            self.enhanced_manual_panel._scan_companies()
+    
+    def _on_refresh_companies(self) -> None:
+        """Handle refresh companies button click."""
+        if hasattr(self, 'enhanced_manual_panel'):
+            self.enhanced_manual_panel._refresh_companies()
+    
+    def _on_preview_click(self) -> None:
+        """Handle preview button click from PreviewPanel."""
+        if hasattr(self, 'enhanced_manual_panel'):
+            self.enhanced_manual_panel.preview_declarations()
+    
+    def _on_download_click(self) -> None:
+        """Handle download button click from PreviewPanel."""
+        if hasattr(self, 'enhanced_manual_panel'):
+            self.enhanced_manual_panel.download_selected()
+    
+    def _on_cancel_click(self) -> None:
+        """Handle cancel button click from PreviewPanel."""
+        if hasattr(self, 'enhanced_manual_panel'):
+            self.enhanced_manual_panel.cancel_operation()
+    
+    def _on_stop_click(self) -> None:
+        """Handle stop button click from PreviewPanel."""
+        if hasattr(self, 'enhanced_manual_panel'):
+            self.enhanced_manual_panel.stop_download()
+    
+    def _on_export_log_click(self) -> None:
+        """Handle export log button click from PreviewPanel."""
+        if hasattr(self, 'enhanced_manual_panel'):
+            self.enhanced_manual_panel.export_error_log()
+    
+    def _on_select_all_change(self, select_all: bool) -> None:
+        """Handle select all checkbox change from PreviewPanel."""
+        if hasattr(self, 'enhanced_manual_panel'):
+            self.enhanced_manual_panel.toggle_select_all()
+    
+    def _on_retry_failed_click(self) -> None:
+        """Handle retry failed button click from PreviewPanel."""
+        if hasattr(self, 'enhanced_manual_panel'):
+            self.enhanced_manual_panel.retry_failed_downloads()
+    
+    def _on_include_pending_changed(self, include_pending: bool) -> None:
+        """Handle include pending checkbox change from PreviewPanel."""
+        if hasattr(self, 'enhanced_manual_panel'):
+            # Sync the checkbox value to EnhancedManualPanel
+            self.enhanced_manual_panel.include_pending_var.set(include_pending)
+            # Trigger preview refresh if data exists
+            if self.enhanced_manual_panel.preview_manager._all_declarations:
+                self.enhanced_manual_panel.preview_declarations()
+    
+    def _on_exclude_xnktc_changed(self, exclude_xnktc: bool) -> None:
+        """Handle exclude XNK TC checkbox change from PreviewPanel."""
+        if hasattr(self, 'enhanced_manual_panel'):
+            # Sync the checkbox value to EnhancedManualPanel
+            self.enhanced_manual_panel.exclude_xnktc_var.set(exclude_xnktc)
+            # Trigger preview refresh if data exists
+            if self.enhanced_manual_panel.preview_manager._all_declarations:
+                self.enhanced_manual_panel.preview_declarations()
+    
+    def _create_control_panel(self) -> None:
+        """
+        Legacy method - kept for backward compatibility.
+        Now redirects to _create_two_column_layout.
+        """
+        pass  # Layout is now created in _create_two_column_layout
     
     def _create_processed_declarations_panel(self) -> None:
-        """Create processed declarations panel with search and management"""
-        # Main frame with modern styling
+        """
+        Legacy method - Create processed declarations panel.
+        Now integrated into PreviewPanel in the right pane.
+        Kept for backward compatibility with existing code.
+        """
+        # Initialize search_var for backward compatibility
+        self.search_var = tk.StringVar()
+        self._hover_item = None
+        
+        # Main frame with modern styling (hidden - integrated into PreviewPanel)
         decl_frame = ttk.LabelFrame(
             self.root, 
             text="Processed Declarations", 
             padding=10,
             style='Card.TLabelframe'
         )
-        decl_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        # Don't pack - this panel is now integrated into PreviewPanel
+        # decl_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
         # Search frame
         search_frame = ttk.Frame(decl_frame)
@@ -1106,14 +1213,14 @@ class CustomsAutomationGUI:
         """
         Callback when download completes from EnhancedManualPanel.
         
-        Updates statistics display with download results using StatisticsBar.
+        Updates statistics display with download results using StatisticsBar and CompactStatusBar.
         Shows desktop notification if enabled.
         
         Args:
             success_count: Number of successful downloads
             error_count: Number of failed downloads
             
-        Requirements: 2.1, 2.5, 10.1, 10.2, 10.3, 10.4
+        Requirements: 2.1, 2.2, 2.5, 10.1, 10.2, 10.3, 10.4
         """
         # Update cumulative statistics
         self.total_processed += success_count + error_count
@@ -1129,6 +1236,15 @@ class CustomsAutomationGUI:
             last_run=self.last_run_time
         )
         
+        # Update CompactStatusBar if available (Requirement 2.2)
+        if hasattr(self, 'compact_status_bar'):
+            self.compact_status_bar.update_statistics(
+                processed=self.total_processed,
+                retrieved=self.total_success,
+                errors=self.total_errors,
+                last_run=self.last_run_time
+            )
+        
         # Show desktop notification (Requirements 2.1, 2.5)
         if self.notification_manager:
             self.notification_manager.notify_batch_complete(success_count, error_count)
@@ -1138,6 +1254,10 @@ class CustomsAutomationGUI:
     def _load_processed_declarations(self) -> None:
         """Load and display all processed declarations"""
         try:
+            # Skip if declarations_tree doesn't exist (two-column layout mode)
+            if not hasattr(self, 'declarations_tree') or self.declarations_tree is None:
+                return
+                
             # Get all processed declarations from tracking database
             declarations = self.tracking_db.get_all_processed_details()
             
@@ -1157,6 +1277,10 @@ class CustomsAutomationGUI:
         Args:
             declarations: List of ProcessedDeclaration objects
         """
+        # Skip if declarations_tree doesn't exist (two-column layout mode)
+        if not hasattr(self, 'declarations_tree') or self.declarations_tree is None:
+            return
+            
         # Clear existing items
         for item in self.declarations_tree.get_children():
             self.declarations_tree.delete(item)
@@ -1291,16 +1415,24 @@ class CustomsAutomationGUI:
             is_connected: True if connected, False otherwise
         """
         if is_connected:
-            self.db_status_label.config(
-                text="● Connected", 
-                foreground=ModernStyles.SUCCESS_COLOR
-            )
+            # Update CompactStatusBar if available
+            if hasattr(self, 'compact_status_bar'):
+                self.compact_status_bar.update_db_status(True, "Connected")
+            else:
+                self.db_status_label.config(
+                    text="● Connected", 
+                    foreground=ModernStyles.SUCCESS_COLOR
+                )
             self.append_log("INFO", "Database connection established")
         else:
-            self.db_status_label.config(
-                text="● Disconnected", 
-                foreground=ModernStyles.ERROR_COLOR
-            )
+            # Update CompactStatusBar if available
+            if hasattr(self, 'compact_status_bar'):
+                self.compact_status_bar.update_db_status(False, "Disconnected")
+            else:
+                self.db_status_label.config(
+                    text="● Disconnected", 
+                    foreground=ModernStyles.ERROR_COLOR
+                )
             self.append_log("WARNING", "Database disconnected")
     
     def get_statistics(self) -> dict:
