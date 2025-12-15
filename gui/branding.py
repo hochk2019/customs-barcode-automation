@@ -26,7 +26,8 @@ COMPANY_SLOGAN = "Chuyên làm thủ tục HQ - Vận chuyển hàng toàn quố
 COMPANY_MOTTO = '"Thích thì thuê - Không thích thì chê - Nhưng đừng bỏ!"'
 
 # Designer Information
-DESIGNER_NAME = "Liên hệ để được tư vấn thủ tục hải quan miễn phí - đúng quy định - có lợi nhất cho DN về lâu dài!"
+DESIGNER_NAME_HEADER = "Designer: Học HK"  # For header banner only
+DESIGNER_NAME = "Liên hệ để được tư vấn thủ tục hải quan miễn phí - đúng quy định - có lợi nhất cho DN về lâu dài!"  # For footer and about dialog
 DESIGNER_EMAIL = "Hochk2019@gmail.com"
 DESIGNER_PHONE = "0868.333.606"
 

@@ -50,38 +50,9 @@ Copy-Item "README.md" "dist\CustomsAutomation\"
 Copy-Item "USER_GUIDE.md" "dist\CustomsAutomation\"
 Copy-Item "DEPLOYMENT.md" "dist\CustomsAutomation\"
 
-# Create default config.ini for first-time users
-Write-Host "Creating default config.ini..." -ForegroundColor Cyan
-$configContent = @"
-[Database]
-Server = Server
-Database = ECUS5VNACCS
-Username = 
-Password = 
-
-[BarcodeService]
-api_url = https://www.customs.gov.vn/DVCQG_TCHQ/srv_BangKeDanhSachContainer.asmx
-primary_web_url = https://pus.customs.gov.vn/xnktc/faces/BangKe.jspx
-timeout = 30
-api_timeout = 10
-web_timeout = 15
-max_retries = 1
-retry_delay = 2
-session_reuse = true
-retrieval_method = auto
-pdf_naming_format = tax_code
-
-[Logging]
-log_level = INFO
-log_file = logs/customs_automation.log
-max_file_size = 10485760
-backup_count = 5
-
-[Output]
-output_path = output
-"@
-$configContent | Out-File -FilePath "dist\CustomsAutomation\config.ini" -Encoding UTF8
-Write-Host "Default config.ini created" -ForegroundColor Green
+# DO NOT create config.ini - only provide config.ini.sample
+# Users should copy config.ini.sample to config.ini and configure it
+Write-Host "Skipping config.ini creation - users will use config.ini.sample" -ForegroundColor Yellow
 
 # Create logs directory
 if (-not (Test-Path "dist\CustomsAutomation\logs")) {
@@ -96,7 +67,13 @@ Write-Host "[4/4] Creating distribution package..." -ForegroundColor Cyan
 if (Test-Path "dist\CustomsAutomation.zip") {
     Remove-Item "dist\CustomsAutomation.zip"
 }
-Compress-Archive -Path "dist\CustomsAutomation" -DestinationPath "dist\CustomsAutomation.zip"
+
+# Package the contents directly (not the folder) for proper auto-update
+Write-Host "Creating flat ZIP structure for auto-update compatibility..." -ForegroundColor Cyan
+$currentDir = Get-Location
+Set-Location "dist\CustomsAutomation"
+Compress-Archive -Path "*" -DestinationPath "..\CustomsAutomation.zip" -Force
+Set-Location $currentDir
 Write-Host "Distribution package created: dist\CustomsAutomation.zip" -ForegroundColor Green
 Write-Host ""
 

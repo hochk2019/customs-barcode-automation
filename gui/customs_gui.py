@@ -42,7 +42,7 @@ from gui.preview_panel import PreviewPanel
 from gui.branding import (
     APP_VERSION, APP_NAME, APP_FULL_NAME, WINDOW_TITLE,
     COMPANY_NAME, COMPANY_SLOGAN, COMPANY_MOTTO,
-    DESIGNER_NAME, DESIGNER_EMAIL, DESIGNER_PHONE, LOGO_FILE,
+    DESIGNER_NAME_HEADER, DESIGNER_NAME, DESIGNER_EMAIL, DESIGNER_PHONE, LOGO_FILE,
     BRAND_PRIMARY_COLOR, BRAND_SECONDARY_COLOR, BRAND_ACCENT_COLOR,
     BRAND_GOLD_COLOR, BRAND_TEXT_COLOR
 )
@@ -342,11 +342,10 @@ class CustomsAutomationGUI:
         # Designer info below version
         designer_header_label = tk.Label(
             right_frame,
-            text=DESIGNER_NAME,
-            font=("Segoe UI", 8),  # Smaller font for long text
+            text=DESIGNER_NAME_HEADER,
+            font=("Segoe UI", 10),  # Normal font for short text
             fg=BRAND_ACCENT_COLOR,
-            bg=BRAND_PRIMARY_COLOR,
-            wraplength=300  # Wrap text if too long
+            bg=BRAND_PRIMARY_COLOR
         )
         designer_header_label.pack(anchor=tk.E, pady=(2, 0))
     
