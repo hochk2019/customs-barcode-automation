@@ -469,13 +469,17 @@ class BarcodePdfGenerator:
         Generate barcode image for PDF.
         
         Args:
-            code: Barcode value (e.g., SoDinhDanh).
+            code: Barcode value (SoToKhai - declaration number).
             
         Returns:
             ReportLab Image object, or None if generation fails.
         """
         if not code:
             return None
+        
+        # Debug log to verify correct value is being used
+        if self.logger:
+            self.logger.info(f"Generating barcode for value: {code}")
         
         # Check if barcode library is available
         if Code39 is None or ImageWriter is None:

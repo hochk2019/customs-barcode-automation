@@ -18,8 +18,8 @@ backup_web_url = https://pus1.customs.gov.vn/BarcodeContainer/BarcodeContainer.a
 # Options: api, web, auto
 # - api: Use SOAP API to get data and render PDF locally (faster, recommended)
 # - web: Use web scraping from pus.customs.gov.vn
-# - auto: Try API first, fallback to web if failed (default)
-retrieval_method = auto
+# - auto: Try API first, fallback to web if failed
+retrieval_method = api
 
 # V1.1: PDF file naming format
 # Options: tax_code, invoice, bill_of_lading
