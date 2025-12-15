@@ -165,8 +165,8 @@ class BarcodePdfGenerator:
         # ===== HEADER SECTION =====
         # Create header table with 2 columns: Left (customs office) | Right (barcode + date)
         
-        # Generate barcode image
-        barcode_img = self._generate_barcode_image(info.so_dinh_danh or info.so_to_khai)
+        # Generate barcode image from SoToKhai (not SoDinhDanh)
+        barcode_img = self._generate_barcode_image(info.so_to_khai)
         
         # Format date
         today = datetime.now()
