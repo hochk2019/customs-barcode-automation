@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.3.4] - 2024-12-16
+
+### 🔄 Code Formatting & Maintenance
+- **Code Formatting**: Áp dụng Kiro IDE autofix và formatting cho tất cả files
+- **Code Quality**: Cải thiện chất lượng code với consistent formatting
+- **Maintenance Release**: Phiên bản bảo trì với code cleanup
+
+### 🔧 Technical Improvements
+- **Consistent Formatting**: Tất cả Python files được format theo chuẩn
+- **Better Readability**: Code dễ đọc và maintain hơn
+- **Version Sync**: Đồng bộ version number across modules
+
 ## [1.3.3] - 2024-12-16
 
 ### 🎯 HD Display Optimization

@@ -15,7 +15,7 @@ def get_app_version():
     except ImportError:
         return "1.3.1"  # Fallback version
 
-APP_VERSION = "1.3.3"  # Keep in sync with main.py
+APP_VERSION = "1.3.4"  # Keep in sync with main.py
 APP_NAME = "Customs Barcode Automation"
 APP_FULL_NAME = f"{APP_NAME} v{APP_VERSION}"
 

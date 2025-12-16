@@ -1807,7 +1807,7 @@ class CustomsAutomationGUI:
         Implements Requirements 1.1, 5.1, 7.1, 7.5, 7.6
         """
         def on_settings_changed(retrieval_method: str, pdf_naming_format: str):
-            """Callback when settings are saved - update BarcodeRetriever immediately"""
+            """Callback when settings are saved - update components immediately"""
             # Update BarcodeRetriever's retrieval method
             if self.barcode_retriever:
                 self.barcode_retriever.set_retrieval_method(retrieval_method)
@@ -1818,6 +1818,14 @@ class CustomsAutomationGUI:
                 from file_utils.pdf_naming_service import PdfNamingService
                 self.file_manager.pdf_naming_service = PdfNamingService(pdf_naming_format)
                 self.logger.info(f"FileManager updated with new PDF naming format: {pdf_naming_format}")
+            
+            # Update NotificationManager settings immediately
+            if self.notification_manager:
+                notifications_enabled = self.config_manager.get_notifications_enabled()
+                sound_enabled = self.config_manager.get_sound_enabled()
+                self.notification_manager.set_notifications_enabled(notifications_enabled)
+                self.notification_manager.set_sound_enabled(sound_enabled)
+                self.logger.info(f"NotificationManager updated - notifications: {notifications_enabled}, sound: {sound_enabled}")
         
         SettingsDialog(
             self.root, 
