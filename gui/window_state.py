@@ -34,8 +34,8 @@ class WindowStateManager:
     Requirements: 6.1, 6.2, 6.3, 6.4
     """
     
-    DEFAULT_WIDTH = 1200
-    DEFAULT_HEIGHT = 850
+    DEFAULT_WIDTH = 1100
+    DEFAULT_HEIGHT = 680
     
     def __init__(self, root: tk.Tk, config_manager: ConfigurationManager):
         """

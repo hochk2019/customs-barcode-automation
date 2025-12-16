@@ -14,7 +14,7 @@ import os
 import threading
 
 # Application version
-APP_VERSION = "1.3.2"
+APP_VERSION = "1.3.3"
 
 # Import configuration and logging
 from config.configuration_manager import ConfigurationManager, ConfigurationError

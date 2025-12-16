@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.3.3] - 2024-12-16
+
+### 🎯 HD Display Optimization
+- **Default Window Size**: Giảm kích thước mặc định từ 1200x850 xuống 1100x680 pixels
+- **HD Compatibility**: Tối ưu cho màn hình HD (1280x720) và các độ phân giải nhỏ hơn
+- **Smart Centering**: Cửa sổ tự động căn giữa màn hình khi mở lần đầu
+- **Responsive Design**: Vẫn hiển thị đầy đủ chức năng trên màn hình nhỏ
+
+### 🔧 Technical Improvements
+- **WindowStateManager**: Cập nhật DEFAULT_WIDTH=1100, DEFAULT_HEIGHT=680
+- **Config Template**: Cập nhật config.ini.sample với kích thước mới
+- **Auto-Update Fix**: Sửa lỗi cấu trúc ZIP release để auto-update hoạt động đúng
+- **Build Process**: Loại bỏ config.ini khỏi release, chỉ giữ config.ini.sample
+
+### 📦 Release Improvements
+- **Flat ZIP Structure**: File release giờ có cấu trúc phẳng thay vì thư mục con
+- **Clean Config**: Không bao gồm config.ini có dữ liệu cũ trong release
+- **Better Compatibility**: Auto-update hoạt động chính xác với cấu trúc mới
+
 ## [1.3.2] - 2024-12-15
 
 ### ✨ New Features
