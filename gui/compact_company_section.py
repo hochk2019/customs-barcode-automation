@@ -16,6 +16,7 @@ from tkcalendar import DateEntry
 from gui.styles import ModernStyles
 from gui.recent_companies_panel import RecentCompaniesPanel
 from gui.autocomplete_combobox import AutocompleteCombobox
+from gui.multi_select_company import MultiSelectCompany
 
 
 class CompactCompanySection(ttk.LabelFrame):
@@ -32,8 +33,8 @@ class CompactCompanySection(ttk.LabelFrame):
     Requirements: 4.1, 4.2, 4.3, 4.4, 4.5
     """
     
-    # Maximum height constraint
-    MAX_HEIGHT = 150
+    # Maximum height constraint (increased in v1.5.0 for multi-select)
+    MAX_HEIGHT = 280
     
     # Compact dropdown height
     DROPDOWN_HEIGHT = 28
@@ -44,6 +45,7 @@ class CompactCompanySection(ttk.LabelFrame):
         company_scanner=None,
         config_manager=None,
         on_company_selected: Optional[Callable[[str], None]] = None,
+        on_companies_selected: Optional[Callable[[List[str]], None]] = None,  # v1.5.0: Multi-select
         on_scan_companies: Optional[Callable[[], None]] = None,
         on_refresh: Optional[Callable[[], None]] = None,
         **kwargs
@@ -65,6 +67,7 @@ class CompactCompanySection(ttk.LabelFrame):
         self.company_scanner = company_scanner
         self.config_manager = config_manager
         self.on_company_selected = on_company_selected
+        self.on_companies_selected = on_companies_selected  # v1.5.0: Multi-select callback
         self.on_scan_companies = on_scan_companies
         self.on_refresh = on_refresh
         
@@ -127,12 +130,12 @@ class CompactCompanySection(ttk.LabelFrame):
         )
         self.clear_btn.pack(side=tk.LEFT)
         
-        # Row 2: Recent companies pills - Requirement 4.3
-        self.recent_panel = RecentCompaniesPanel(
+        # Row 2: Multi-select company list (v1.5.0)
+        self.multi_select = MultiSelectCompany(
             main_frame,
-            on_select=self._on_recent_select
+            on_selection_changed=self._on_multi_select_changed
         )
-        # Will be shown when there are recent companies
+        self.multi_select.pack(fill=tk.BOTH, expand=True, pady=(5, 0))
         
         # Row 3: Date range
         row3 = ttk.Frame(main_frame)
@@ -145,8 +148,8 @@ class CompactCompanySection(ttk.LabelFrame):
             font=(ModernStyles.FONT_FAMILY, ModernStyles.FONT_SIZE_NORMAL)
         ).pack(side=tk.LEFT, padx=(0, 3))
         
-        # Default: 7 days ago
-        default_from = datetime.now() - timedelta(days=7)
+        # Default: 1 day ago (changed from 7 days in v1.5.0)
+        default_from = datetime.now() - timedelta(days=1)
         self.from_date = DateEntry(
             row3,
             width=12,
@@ -185,18 +188,15 @@ class CompactCompanySection(ttk.LabelFrame):
             self.on_refresh()
     
     def _on_company_change(self, event=None) -> None:
-        """Handle company selection change."""
+        """Handle company selection change (single-select combo, for quick search)."""
         tax_code = self.company_var.get().strip()
         if tax_code and self.on_company_selected:
             self.on_company_selected(tax_code)
-            # Add to recent
-            self.recent_panel.add_recent(tax_code)
     
-    def _on_recent_select(self, tax_code: str) -> None:
-        """Handle recent company button click."""
-        self.company_var.set(tax_code)
-        if self.on_company_selected:
-            self.on_company_selected(tax_code)
+    def _on_multi_select_changed(self, selected_companies: List[str]) -> None:
+        """Handle multi-select company list change (v1.5.0)."""
+        if self.on_companies_selected:
+            self.on_companies_selected(selected_companies)
     
     def _clear_company(self) -> None:
         """Clear company selection."""
@@ -211,6 +211,8 @@ class CompactCompanySection(ttk.LabelFrame):
         """
         self._companies = companies
         self.company_combo.set_completion_list(companies)
+        # v1.5.0: Also update multi-select list
+        self.multi_select.set_companies(companies)
     
     def get_selected_company(self) -> str:
         """
@@ -250,14 +252,14 @@ class CompactCompanySection(ttk.LabelFrame):
         self.from_date.set_date(from_date)
         self.to_date.set_date(to_date)
     
-    def update_recent_companies(self, tax_codes: List[str]) -> None:
+    def get_selected_companies(self) -> List[str]:
         """
-        Update recent companies display.
+        Get list of selected companies (v1.5.0 multi-select).
         
-        Args:
-            tax_codes: List of recent tax codes
+        Returns:
+            List of selected tax codes
         """
-        self.recent_panel.update_recent(tax_codes)
+        return self.multi_select.get_selected_companies()
     
     def set_scan_button_state(self, state: str) -> None:
         """

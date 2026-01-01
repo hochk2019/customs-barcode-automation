@@ -24,6 +24,7 @@ class Declaration:
     goods_description: Optional[str]
     # Additional fields for preview display
     status_name: Optional[str] = None  # Trạng thái chi tiết: Nhập mới, Đã phân luồng, Thông quan
+    company_name: Optional[str] = None  # Tên công ty (từ bảng DTOKHAIMD)
     declaration_type: Optional[str] = None  # Loại hình: A11, A12, B11...
     bill_of_lading: Optional[str] = None  # Số vận đơn
     invoice_number: Optional[str] = None  # Số hóa đơn
@@ -122,3 +123,44 @@ class OperationMode(Enum):
     """Operation mode for the scheduler"""
     AUTOMATIC = "automatic"
     MANUAL = "manual"
+
+
+class ClearanceStatus(Enum):
+    """Declaration clearance status."""
+    PENDING = "pending"          # Chưa thông quan
+    CLEARED = "cleared"          # Đã thông quan
+    TRANSFER = "transfer"        # Chuyển địa điểm kiểm tra (Luồng đỏ - có thể lấy mã vạch)
+    ERROR = "error"              # Lỗi kiểm tra
+    UNKNOWN = "unknown"          # Chưa xác định
+
+
+@dataclass
+class TrackingDeclaration:
+    """A declaration being tracked for clearance."""
+    id: Optional[int]
+    tax_code: str
+    declaration_number: str
+    customs_code: str
+    declaration_date: str
+    company_name: str
+    status: ClearanceStatus
+    last_checked: Optional[datetime]
+    cleared_at: Optional[datetime]
+    added_at: datetime
+    notified: bool = False
+    
+    def to_dict(self) -> dict:
+        """Convert to dictionary for display."""
+        return {
+            'id': self.id,
+            'tax_code': self.tax_code,
+            'declaration_number': self.declaration_number,
+            'customs_code': self.customs_code,
+            'declaration_date': self.declaration_date,
+            'company_name': self.company_name,
+            'status': self.status.value,
+            'last_checked': self.last_checked.strftime('%d/%m/%Y %H:%M') if self.last_checked else '',
+            'cleared_at': self.cleared_at.strftime('%d/%m/%Y %H:%M') if self.cleared_at else '',
+            'added_at': self.added_at.strftime('%d/%m/%Y %H:%M'),
+            'notified': self.notified
+        }

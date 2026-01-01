@@ -39,6 +39,14 @@ from gui.compact_status_bar import CompactStatusBar
 from gui.compact_output_section import CompactOutputSection
 from gui.compact_company_section import CompactCompanySection
 from gui.preview_panel import PreviewPanel
+from gui.tracking_panel import TrackingPanel
+# v2.0: Extracted GUI components
+from gui.dialogs.about_dialog import show_about_dialog
+from gui.components.header_banner import HeaderBanner
+from gui.components.footer import Footer
+from gui.controllers.updater_controller import UpdaterController
+from gui.controllers.file_operations_controller import FileOperationsController
+from gui.layout_builders import create_left_pane_content, create_right_pane_content
 from gui.branding import (
     APP_VERSION, APP_NAME, APP_FULL_NAME, WINDOW_TITLE,
     COMPANY_NAME, COMPANY_SLOGAN, COMPANY_MOTTO,
@@ -138,6 +146,26 @@ class CustomsAutomationGUI:
         # Load initial data
         self._load_processed_declarations()
         
+        # Initialize ClearanceChecker (Phase 4)
+        from gui.clearance_checker import ClearanceChecker
+        from config.user_preferences import get_preferences
+        prefs = get_preferences()
+        
+        self.clearance_checker = ClearanceChecker(
+            tracking_db=self.tracking_db,
+            ecus_connector=self.ecus_connector,
+            notification_manager=self.notification_manager,
+            logger=self.logger
+        )
+        
+        # Configure and start if enabled
+        self.clearance_checker.set_config(prefs.auto_check_enabled, prefs.auto_check_interval)
+        if prefs.auto_check_enabled:
+            self.clearance_checker.start()
+            
+        # Register callback to refresh TrackingPanel (will work since method uses self.tracking_panel)
+        self.clearance_checker.on_status_changed = self._on_clearance_status_changed
+        
         # Apply saved theme after all GUI components are created (Requirements 7.5)
         # Always apply the saved theme to ensure consistent styling
         saved_theme = self.config_manager.get_theme()
@@ -180,6 +208,10 @@ class CustomsAutomationGUI:
         Requirements: 6.1
         """
         try:
+            # Stop ClearanceChecker
+            if hasattr(self, 'clearance_checker'):
+                self.clearance_checker.stop()
+                
             # Save window state
             self.window_state_manager.save_state()
             self.logger.info("Window state saved")
@@ -201,474 +233,31 @@ class CustomsAutomationGUI:
             self.logger.warning(f"Could not set window icon: {e}")
     
     def _create_header_banner(self) -> None:
-        """Create modern header banner with glossy black background and high contrast"""
-        # Header frame with glossy black background (increased height for designer info)
-        header_frame = tk.Frame(self.root, bg=BRAND_PRIMARY_COLOR, height=105)
-        header_frame.pack(fill=tk.X, side=tk.TOP)
-        header_frame.pack_propagate(False)
-        
-        # Inner container for content
-        header_content = tk.Frame(header_frame, bg=BRAND_PRIMARY_COLOR)
-        header_content.pack(fill=tk.BOTH, expand=True, padx=20, pady=8)
-        
-        # LEFT SIDE: Logo + Motto (horizontal layout)
-        left_frame = tk.Frame(header_content, bg=BRAND_PRIMARY_COLOR)
-        left_frame.pack(side=tk.LEFT, padx=(0, 15))
-        
-        # Logo on the left
-        logo_container = tk.Frame(left_frame, bg=BRAND_PRIMARY_COLOR)
-        logo_container.pack(side=tk.LEFT)
-        
-        try:
-            logo_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), LOGO_FILE)
-            if os.path.exists(logo_path):
-                logo_img = Image.open(logo_path)
-                logo_img.thumbnail((65, 65), Image.Resampling.LANCZOS)
-                self.logo_photo = ImageTk.PhotoImage(logo_img)
-                logo_label = tk.Label(logo_container, image=self.logo_photo, bg=BRAND_PRIMARY_COLOR)
-                logo_label.pack()
-        except Exception as e:
-            self.logger.warning(f"Could not load logo: {e}")
-        
-        # Motto next to logo - 3 lines, italic, gold color
-        motto_frame = tk.Frame(left_frame, bg=BRAND_PRIMARY_COLOR)
-        motto_frame.pack(side=tk.LEFT, padx=(15, 0), fill=tk.Y)
-        
-        # Line 1: "Thích thì thuê" - moved up (pady=0 at top)
-        tk.Label(
-            motto_frame,
-            text="Thích thì thuê",
-            font=("Segoe UI", 10, "italic"),
-            fg=BRAND_GOLD_COLOR,
-            bg=BRAND_PRIMARY_COLOR
-        ).pack(anchor=tk.W, pady=(0, 0))
-        
-        # Line 2: "Không thích thì chê"
-        tk.Label(
-            motto_frame,
-            text="Không thích thì chê",
-            font=("Segoe UI", 10, "italic"),
-            fg=BRAND_GOLD_COLOR,
-            bg=BRAND_PRIMARY_COLOR
-        ).pack(anchor=tk.W, pady=(1, 0))
-        
-        # Line 3: "Nhưng đừng bỏ!" - reduced bottom padding
-        tk.Label(
-            motto_frame,
-            text="Nhưng đừng bỏ!",
-            font=("Segoe UI", 10, "italic"),
-            fg=BRAND_GOLD_COLOR,
-            bg=BRAND_PRIMARY_COLOR
-        ).pack(anchor=tk.W, pady=(1, 0))
-        
-        # CENTER: Company name (large) + Slogan (centered below)
-        center_frame = tk.Frame(header_content, bg=BRAND_PRIMARY_COLOR)
-        center_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        
-        # Company name - Large gold text, centered
-        company_label = tk.Label(
-            center_frame,
-            text=COMPANY_NAME,
-            font=("Segoe UI", 22, "bold"),
-            fg=BRAND_GOLD_COLOR,
-            bg=BRAND_PRIMARY_COLOR
+        """Create header banner - v2.0: Uses extracted HeaderBanner component."""
+        self._header = HeaderBanner(
+            parent=self.root,
+            logger=self.logger,
+            on_about_click=self._show_about_dialog,
+            on_update_click=self._check_for_updates
         )
-        company_label.pack(anchor=tk.CENTER, pady=(5, 0))
-        
-        # Slogan - White text, centered below company name
-        slogan_label = tk.Label(
-            center_frame,
-            text=COMPANY_SLOGAN,
-            font=("Segoe UI", 11),
-            fg=BRAND_TEXT_COLOR,
-            bg=BRAND_PRIMARY_COLOR
-        )
-        slogan_label.pack(anchor=tk.CENTER, pady=(2, 0))
-        
-        # RIGHT SIDE: About button + Version
-        right_frame = tk.Frame(header_content, bg=BRAND_PRIMARY_COLOR)
-        right_frame.pack(side=tk.RIGHT, padx=(15, 0))
-        
-        # Button frame for About and Update buttons
-        button_row = tk.Frame(right_frame, bg=BRAND_PRIMARY_COLOR)
-        button_row.pack(anchor=tk.E)
-        
-        # About button - Gold text on dark background with gold border
-        about_btn = tk.Button(
-            button_row,
-            text="ℹ  Giới thiệu",
-            font=("Segoe UI", 11, "bold"),
-            fg=BRAND_GOLD_COLOR,
-            bg=BRAND_SECONDARY_COLOR,
-            activebackground=BRAND_PRIMARY_COLOR,
-            activeforeground=BRAND_ACCENT_COLOR,
-            relief=tk.RIDGE,
-            bd=2,
-            cursor="hand2",
-            padx=12,
-            pady=4,
-            command=self._show_about_dialog
-        )
-        about_btn.pack(side=tk.LEFT, padx=(0, 5))
-        
-        # Update check button
-        update_btn = tk.Button(
-            button_row,
-            text="🔄  Cập nhật",
-            font=("Segoe UI", 11, "bold"),
-            fg=BRAND_GOLD_COLOR,
-            bg=BRAND_SECONDARY_COLOR,
-            activebackground=BRAND_PRIMARY_COLOR,
-            activeforeground=BRAND_ACCENT_COLOR,
-            relief=tk.RIDGE,
-            bd=2,
-            cursor="hand2",
-            padx=12,
-            pady=4,
-            command=self._check_for_updates
-        )
-        update_btn.pack(side=tk.LEFT)
-        
-        # Version below button
-        version_label = tk.Label(
-            right_frame,
-            text=f"Version {APP_VERSION}",
-            font=("Segoe UI", 9),
-            fg=BRAND_ACCENT_COLOR,
-            bg=BRAND_PRIMARY_COLOR
-        )
-        version_label.pack(anchor=tk.E, pady=(5, 0))
-        
-        # Designer info below version
-        designer_header_label = tk.Label(
-            right_frame,
-            text=DESIGNER_NAME_HEADER,
-            font=("Segoe UI", 10),  # Normal font for short text
-            fg=BRAND_ACCENT_COLOR,
-            bg=BRAND_PRIMARY_COLOR
-        )
-        designer_header_label.pack(anchor=tk.E, pady=(2, 0))
     
     def _create_footer(self) -> None:
-        """Create footer with designer info and contact"""
-        footer_frame = tk.Frame(self.root, bg=BRAND_PRIMARY_COLOR, height=30)
-        footer_frame.pack(fill=tk.X, side=tk.BOTTOM)
-        footer_frame.pack_propagate(False)
-        
-        # Footer content
-        footer_content = tk.Frame(footer_frame, bg=BRAND_PRIMARY_COLOR)
-        footer_content.pack(fill=tk.BOTH, expand=True, padx=15)
-        
-        # Left: Designer info
-        designer_label = tk.Label(
-            footer_content,
-            text=DESIGNER_NAME,
-            font=("Segoe UI", 9),
-            fg=BRAND_ACCENT_COLOR,
-            bg=BRAND_PRIMARY_COLOR
-        )
-        designer_label.pack(side=tk.LEFT, pady=5)
-        
-        # Right: Contact info
-        contact_label = tk.Label(
-            footer_content,
-            text=f"📧 {DESIGNER_EMAIL}  |  📞 {DESIGNER_PHONE}",
-            font=("Segoe UI", 9),
-            fg=BRAND_ACCENT_COLOR,
-            bg=BRAND_PRIMARY_COLOR
-        )
-        contact_label.pack(side=tk.RIGHT, pady=5)
+        """Create footer - v2.0: Uses extracted Footer component."""
+        self._footer = Footer(self.root)
     
     def _check_for_updates(self) -> None:
-        """Check for updates manually."""
-        import threading
-        from tkinter import messagebox
-        
-        def check_updates():
-            try:
-                from update.update_checker import UpdateChecker
-                from gui.update_dialog import UpdateDialog, DownloadProgressDialog, InstallPromptDialog
-                from update.download_manager import DownloadManager, DownloadCancelledError
-                from update.models import DownloadProgress
-                
-                github_repo = self.config_manager.get('Update', 'github_repo', fallback='')
-                if not github_repo:
-                    self.root.after(0, lambda: messagebox.showinfo(
-                        "Kiểm tra cập nhật",
-                        "Chưa cấu hình GitHub repository cho cập nhật."
-                    ))
-                    return
-                
-                checker = UpdateChecker(APP_VERSION, github_repo, self.config_manager)
-                update_info = checker.check_for_updates(force=True)
-                
-                if update_info:
-                    def show_dialog():
-                        dialog = UpdateDialog(self.root, update_info)
-                        result = dialog.show()
-                        
-                        if result == "update_now":
-                            download_manager = DownloadManager()
-                            
-                            # Determine file extension from download URL
-                            download_url = update_info.download_url
-                            if download_url.endswith('.zip'):
-                                file_ext = '.zip'
-                            else:
-                                file_ext = '.exe'
-                            
-                            filename = f"CustomsBarcodeAutomation_{update_info.latest_version}{file_ext}"
-                            progress_dialog = DownloadProgressDialog(self.root, filename)
-                            
-                            def progress_callback(downloaded, total, speed):
-                                progress = DownloadProgress(downloaded, total, speed)
-                                self.root.after(0, lambda: progress_dialog.update_progress(progress))
-                            
-                            def download_thread():
-                                try:
-                                    filepath = download_manager.download_file(
-                                        download_url,
-                                        filename,
-                                        update_info.file_size,
-                                        progress_callback
-                                    )
-                                    
-                                    self.root.after(0, progress_dialog.close)
-                                    
-                                    # Handle ZIP extraction with auto-update
-                                    if download_manager.is_zip_file(filepath):
-                                        try:
-                                            # Get app directory for in-place update
-                                            app_dir = download_manager.get_app_directory()
-                                            
-                                            # Ask user if they want auto-update or manual
-                                            def ask_update_method():
-                                                result = messagebox.askyesno(
-                                                    "Cập nhật tự động",
-                                                    f"Đã tải xong bản cập nhật.\n\n"
-                                                    f"Bạn có muốn cập nhật tự động không?\n"
-                                                    f"- Ấn 'Yes': Ứng dụng sẽ đóng và tự động cập nhật\n"
-                                                    f"- Ấn 'No': Giải nén vào thư mục riêng để cập nhật thủ công"
-                                                )
-                                                
-                                                if result:
-                                                    # Auto-update: close app and run update script
-                                                    self.logger.info("Starting auto-update...")
-                                                    if download_manager.run_update_and_restart(filepath, app_dir):
-                                                        # Close the app to allow update
-                                                        self.root.after(500, self.root.destroy)
-                                                    else:
-                                                        messagebox.showerror("Lỗi", "Không thể khởi động quá trình cập nhật!")
-                                                else:
-                                                    # Manual update: extract to separate folder
-                                                    extract_dir = download_manager.extract_zip(filepath)
-                                                    messagebox.showinfo(
-                                                        "Tải xuống hoàn tất",
-                                                        f"Đã giải nén phiên bản mới tại:\n{extract_dir}\n\n"
-                                                        "Vui lòng đóng ứng dụng và copy các file vào thư mục cài đặt."
-                                                    )
-                                                    import subprocess
-                                                    subprocess.Popen(['explorer', extract_dir])
-                                            
-                                            self.root.after(0, ask_update_method)
-                                            
-                                        except Exception as e:
-                                            self.logger.error(f"Update failed: {e}")
-                                            self.root.after(0, lambda: messagebox.showerror("Lỗi", f"Cập nhật thất bại: {e}"))
-                                    else:
-                                        # Handle EXE installer
-                                        def show_install_prompt():
-                                            install_dialog = InstallPromptDialog(self.root, filepath)
-                                            install_result = install_dialog.show()
-                                            
-                                            if install_result == "install_now":
-                                                import subprocess
-                                                subprocess.Popen([filepath], shell=True)
-                                                self.root.after(500, self.root.destroy)
-                                            else:
-                                                download_manager.save_pending_installer(filepath, self.config_manager)
-                                        
-                                        self.root.after(0, show_install_prompt)
-                                    
-                                except DownloadCancelledError:
-                                    self.logger.info("Download cancelled by user")
-                                except Exception as e:
-                                    self.logger.error(f"Download failed: {e}")
-                                    self.root.after(0, lambda: messagebox.showerror("Lỗi", f"Tải xuống thất bại: {e}"))
-                            
-                            threading.Thread(target=download_thread, daemon=True).start()
-                            
-                        elif result == "skip_version":
-                            checker.skip_version(update_info.latest_version)
-                    
-                    self.root.after(0, show_dialog)
-                else:
-                    self.root.after(0, lambda: messagebox.showinfo(
-                        "Kiểm tra cập nhật",
-                        "Bạn đang sử dụng phiên bản mới nhất."
-                    ))
-                    
-            except Exception as e:
-                self.logger.warning(f"Update check failed: {e}")
-                self.root.after(0, lambda: messagebox.showerror(
-                    "Lỗi",
-                    f"Không thể kiểm tra cập nhật: {e}"
-                ))
-        
-        threading.Thread(target=check_updates, daemon=True).start()
+        """Check for updates - v2.0: Uses extracted UpdaterController."""
+        if not hasattr(self, '_updater_controller'):
+            self._updater_controller = UpdaterController(
+                root=self.root,
+                config_manager=self.config_manager,
+                logger=self.logger
+            )
+        self._updater_controller.check_for_updates()
     
     def _show_about_dialog(self) -> None:
-        """Show About dialog with glossy black background and high contrast"""
-        from gui.branding import COMPANY_NAME_FULL
-        
-        dialog = tk.Toplevel(self.root)
-        dialog.title("Giới thiệu")
-        dialog.geometry("500x650")
-        dialog.resizable(False, False)
-        dialog.transient(self.root)
-        dialog.grab_set()
-        dialog.configure(bg=BRAND_PRIMARY_COLOR)
-        
-        # Center dialog
-        dialog.update_idletasks()
-        x = (dialog.winfo_screenwidth() // 2) - (dialog.winfo_width() // 2)
-        y = (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
-        dialog.geometry(f"+{x}+{y}")
-        
-        # Main frame with glossy black background
-        main_frame = tk.Frame(dialog, bg=BRAND_PRIMARY_COLOR)
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=15)
-        
-        # Logo - Larger
-        try:
-            logo_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), LOGO_FILE)
-            if os.path.exists(logo_path):
-                logo_img = Image.open(logo_path)
-                logo_img.thumbnail((120, 120), Image.Resampling.LANCZOS)
-                self.about_logo = ImageTk.PhotoImage(logo_img)
-                logo_label = tk.Label(main_frame, image=self.about_logo, bg=BRAND_PRIMARY_COLOR)
-                logo_label.pack(pady=(10, 15))
-        except Exception:
-            pass
-        
-        # App name - Large gold text
-        tk.Label(
-            main_frame,
-            text=APP_NAME,
-            font=("Segoe UI", 20, "bold"),
-            fg=BRAND_GOLD_COLOR,
-            bg=BRAND_PRIMARY_COLOR
-        ).pack()
-        
-        # Version
-        tk.Label(
-            main_frame,
-            text=f"Version {APP_VERSION}",
-            font=("Segoe UI", 12),
-            fg=BRAND_ACCENT_COLOR,
-            bg=BRAND_PRIMARY_COLOR
-        ).pack(pady=(0, 12))
-        
-        # Gold separator
-        tk.Frame(main_frame, bg=BRAND_GOLD_COLOR, height=2).pack(fill=tk.X, padx=40, pady=8)
-        
-        # Company name - Large gold
-        tk.Label(
-            main_frame,
-            text=COMPANY_NAME_FULL,
-            font=("Segoe UI", 16, "bold"),
-            fg=BRAND_GOLD_COLOR,
-            bg=BRAND_PRIMARY_COLOR
-        ).pack(pady=(8, 0))
-        
-        # Slogan - White
-        tk.Label(
-            main_frame,
-            text=COMPANY_SLOGAN,
-            font=("Segoe UI", 11),
-            fg=BRAND_TEXT_COLOR,
-            bg=BRAND_PRIMARY_COLOR
-        ).pack(pady=(5, 0))
-        
-        # Motto - Gold accent, italic
-        tk.Label(
-            main_frame,
-            text=COMPANY_MOTTO,
-            font=("Segoe UI", 10, "italic"),
-            fg=BRAND_ACCENT_COLOR,
-            bg=BRAND_PRIMARY_COLOR
-        ).pack(pady=(5, 12))
-        
-        # Gold separator
-        tk.Frame(main_frame, bg=BRAND_GOLD_COLOR, height=2).pack(fill=tk.X, padx=40, pady=8)
-        
-        # Designer info - Gold accent
-        tk.Label(
-            main_frame,
-            text=DESIGNER_NAME,
-            font=("Segoe UI", 10, "bold"),  # Smaller font for long text
-            fg=BRAND_ACCENT_COLOR,
-            bg=BRAND_PRIMARY_COLOR,
-            wraplength=400  # Wrap text if too long
-        ).pack(pady=(8, 5))
-        
-        # Email - Gold accent
-        tk.Label(
-            main_frame,
-            text=f"📧  {DESIGNER_EMAIL}",
-            font=("Segoe UI", 11),
-            fg=BRAND_ACCENT_COLOR,
-            bg=BRAND_PRIMARY_COLOR
-        ).pack(pady=(0, 3))
-        
-        # Phone - Gold accent
-        tk.Label(
-            main_frame,
-            text=f"📞  {DESIGNER_PHONE}",
-            font=("Segoe UI", 11),
-            fg=BRAND_ACCENT_COLOR,
-            bg=BRAND_PRIMARY_COLOR
-        ).pack(pady=(0, 10))
-        
-        # Gold separator before disclaimer
-        tk.Frame(main_frame, bg=BRAND_GOLD_COLOR, height=1).pack(fill=tk.X, padx=40, pady=5)
-        
-        # Disclaimer text - smaller font, gray color, at bottom
-        disclaimer_text = (
-            "Phần mềm phục vụ cộng đồng lấy mã vạch thuận tiện hơn thay vì lấy thủ công, "
-            "không nhằm mục đích thương mại. Người dùng cần tuân thủ luật pháp nước "
-            "Cộng Hòa XHCN Việt Nam, nghiêm cấm sử dụng cho mục đích vi phạm pháp luật. "
-            "Tự chịu trách nhiệm dân sự/hình sự về việc sử dụng phần mềm."
-        )
-        tk.Label(
-            main_frame,
-            text=disclaimer_text,
-            font=("Segoe UI", 8),
-            fg="#888888",  # Gray color for disclaimer
-            bg=BRAND_PRIMARY_COLOR,
-            wraplength=440,
-            justify=tk.CENTER
-        ).pack(pady=(5, 10))
-        
-        # Close button - Gold with black text
-        close_btn = tk.Button(
-            main_frame,
-            text="Đóng",
-            font=("Segoe UI", 11, "bold"),
-            fg=BRAND_PRIMARY_COLOR,
-            bg=BRAND_GOLD_COLOR,
-            activebackground=BRAND_ACCENT_COLOR,
-            activeforeground=BRAND_PRIMARY_COLOR,
-            width=15,
-            pady=5,
-            relief=tk.FLAT,
-            cursor="hand2",
-            command=dialog.destroy
-        )
-        close_btn.pack(pady=(5, 10))
-        
-        # Bind Escape key
-        dialog.bind('<Escape>', lambda e: dialog.destroy())
+        """Show About dialog - v2.0: Uses extracted component."""
+        show_about_dialog(self.root)
     
     def _create_two_column_layout(self) -> None:
         """
@@ -762,13 +351,24 @@ class CustomsAutomationGUI:
     
     def _create_right_pane_content(self, parent: ttk.Frame) -> None:
         """
-        Create right pane content with Preview Panel.
+        Create right pane content with tabbed interface (v1.5.0).
+        
+        Tabs:
+        - Preview Panel (Xem trước tờ khai)
+        - Tracking Panel (Theo dõi thông quan)
         
         Requirements: 5.1, 5.2, 5.3, 5.4, 5.5
         """
-        # Preview Panel - Requirements 5.1, 5.2, 5.3, 5.4, 5.5
+        # v1.5.0: Create notebook for tabs
+        self.right_notebook = ttk.Notebook(parent)
+        self.right_notebook.pack(fill=tk.BOTH, expand=True)
+        
+        # Tab 1: Preview Panel
+        preview_tab = ttk.Frame(self.right_notebook)
+        self.right_notebook.add(preview_tab, text="📋 Xem trước tờ khai")
+        
         self.preview_panel = PreviewPanel(
-            parent,
+            preview_tab,
             on_preview=self._on_preview_click,
             on_download=self._on_download_click,
             on_cancel=self._on_cancel_click,
@@ -776,14 +376,42 @@ class CustomsAutomationGUI:
             on_export_log=self._on_export_log_click,
             on_select_all=self._on_select_all_change,
             on_retry_failed=self._on_retry_failed_click,
+            on_check_clearance=self._on_check_clearance_click,
             on_include_pending_changed=self._on_include_pending_changed,
             on_exclude_xnktc_changed=self._on_exclude_xnktc_changed
         )
         self.preview_panel.pack(fill=tk.BOTH, expand=True)
         
+        # Tab 2: Tracking Panel (v1.5.0)
+        tracking_tab = ttk.Frame(self.right_notebook)
+        self.right_notebook.add(tracking_tab, text="🔍 Theo dõi thông quan")
+        
+        # Initialize TrackingPanel
+        self.tracking_panel = TrackingPanel(
+            tracking_tab,
+            tracking_db=self.tracking_db,
+            on_get_barcode=self._on_download_tracking_declarations,
+            on_check_now=self._on_manual_check_clearance,
+            on_stop=self._on_stop_tracking_check,
+            on_settings=self._show_settings_dialog
+        )
+        self.tracking_panel.pack(fill=tk.BOTH, expand=True)
+        
+        # Start countdown timer if auto check is enabled
+        from config.user_preferences import get_preferences
+        prefs = get_preferences()
+        if prefs.auto_check_enabled:
+            self.tracking_panel.start_countdown(prefs.auto_check_interval)
+        
+
+        
         # Connect EnhancedManualPanel to PreviewPanel for two-column layout
         if hasattr(self, 'enhanced_manual_panel'):
             self.enhanced_manual_panel.set_external_preview_panel(self.preview_panel)
+            
+            # v1.5.0: Connect callbacks (Added in Phase 6)
+            self.preview_panel.on_check_clearance = self._on_check_clearance_click
+            self.preview_panel.on_add_to_tracking = self._on_add_to_tracking_click
     
     def _on_output_path_changed(self, path: str) -> None:
         """Handle output path change from CompactOutputSection."""
@@ -815,9 +443,33 @@ class CustomsAutomationGUI:
             self.enhanced_manual_panel.preview_declarations()
     
     def _on_download_click(self) -> None:
-        """Handle download button click from PreviewPanel."""
+        """Handle download button click from PreviewPanel - uses same mechanism as tracking panel."""
+        if not hasattr(self, 'preview_panel'):
+            return
+        
+        from tkinter import messagebox
+        
+        # Get selected declarations from preview panel
+        selected = self.preview_panel.get_selected_declarations_data()
+        if not selected:
+            messagebox.showwarning("Cảnh báo", "Vui lòng chọn tờ khai để lấy mã vạch.")
+            return
+        
+        # Use the same mechanism as tracking panel - call enhanced_manual_panel.download_specific_declarations
         if hasattr(self, 'enhanced_manual_panel'):
-            self.enhanced_manual_panel.download_selected()
+            # Convert to format expected by panel - include all required fields
+            declarations = []
+            for decl in selected:
+                declarations.append({
+                    'tax_code': decl.get('tax_code', ''),
+                    'declaration_number': decl.get('declaration_number', ''),
+                    'date': decl.get('declaration_date') or decl.get('date', None),
+                    'customs_code': decl.get('customs_code') or decl.get('customs_office_code', ''),
+                    'company_name': decl.get('company_name', '')
+                })
+            self.enhanced_manual_panel.download_specific_declarations(declarations)
+        else:
+            messagebox.showerror("Lỗi", "Enhanced manual panel chưa được khởi tạo.")
     
     def _on_cancel_click(self) -> None:
         """Handle cancel button click from PreviewPanel."""
@@ -862,585 +514,301 @@ class CustomsAutomationGUI:
             if self.enhanced_manual_panel.preview_manager._all_declarations:
                 self.enhanced_manual_panel.preview_declarations()
     
-    def _create_control_panel(self) -> None:
-        """
-        Legacy method - kept for backward compatibility.
-        Now redirects to _create_two_column_layout.
-        """
-        pass  # Layout is now created in _create_two_column_layout
+    def _on_check_clearance_click(self) -> None:
+        """Check clearance - v2.0: Uses simplified inline check."""
+        if not hasattr(self, 'preview_panel'):
+            return
+        selected = self.preview_panel.get_selected_declarations_data()
+        if not selected:
+            from tkinter import messagebox
+            messagebox.showwarning("Cảnh báo", "Vui lòng chọn tờ khai.")
+            return
+        def check():
+            for d in selected:
+                try:
+                    status = self.ecus_connector.check_declarations_status(d['tax_code'], d['declaration_number'])
+                    if status:
+                        self.root.after(0, lambda dn=d['declaration_number'], s=status: self.preview_panel.update_item_status(dn, s))
+                except Exception as e:
+                    self.logger.error(f"Check failed: {e}")
+            self.root.after(0, lambda: __import__('tkinter').messagebox.showinfo("Hoàn tất", "Đã kiểm tra xong."))
+        import threading
+        threading.Thread(target=check, daemon=True).start()
     
-    def _create_processed_declarations_panel(self) -> None:
-        """
-        Legacy method - Create processed declarations panel.
-        Now integrated into PreviewPanel in the right pane.
-        Kept for backward compatibility with existing code.
-        """
-        # Initialize search_var for backward compatibility
-        self.search_var = tk.StringVar()
-        self._hover_item = None
-        
-        # Main frame with modern styling (hidden - integrated into PreviewPanel)
-        decl_frame = ttk.LabelFrame(
-            self.root, 
-            text="Processed Declarations", 
-            padding=10,
-            style='Card.TLabelframe'
-        )
-        # Don't pack - this panel is now integrated into PreviewPanel
-        # decl_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-        
-        # Search frame
-        search_frame = ttk.Frame(decl_frame)
-        search_frame.pack(fill=tk.X, pady=5)
-        
-        ttk.Label(
-            search_frame, 
-            text="Search:",
-            font=(ModernStyles.FONT_FAMILY, ModernStyles.FONT_SIZE_NORMAL)
-        ).pack(side=tk.LEFT, padx=5)
-        
-        self.search_var = tk.StringVar()
-        search_entry = ttk.Entry(search_frame, textvariable=self.search_var, width=30)
-        search_entry.pack(side=tk.LEFT, padx=5)
-        
-        search_button = ttk.Button(search_frame, text="Search", command=self.search_declarations, width=12)
-        search_button.pack(side=tk.LEFT, padx=5)
-        
-        # Table frame with scrollbar
-        table_frame = ttk.Frame(decl_frame)
-        table_frame.pack(fill=tk.BOTH, expand=True, pady=5)
-        
-        # Scrollbars
-        v_scrollbar = ttk.Scrollbar(table_frame, orient=tk.VERTICAL)
-        v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        h_scrollbar = ttk.Scrollbar(table_frame, orient=tk.HORIZONTAL)
-        h_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
-        
-        # Treeview for declarations with modern styling (Requirement 4.8)
-        columns = ("declaration_number", "tax_code", "date", "timestamp")
-        self.declarations_tree = ttk.Treeview(
-            table_frame,
-            columns=columns,
-            show="tree headings",
-            selectmode="extended",
-            yscrollcommand=v_scrollbar.set,
-            xscrollcommand=h_scrollbar.set
-        )
-        
-        # Configure scrollbars
-        v_scrollbar.config(command=self.declarations_tree.yview)
-        h_scrollbar.config(command=self.declarations_tree.xview)
-        
-        # Column headings
-        self.declarations_tree.heading("#0", text="☐")
-        self.declarations_tree.heading("declaration_number", text="Declaration Number")
-        self.declarations_tree.heading("tax_code", text="Tax Code")
-        self.declarations_tree.heading("date", text="Date")
-        self.declarations_tree.heading("timestamp", text="Processed At")
-        
-        # Column widths
-        self.declarations_tree.column("#0", width=30, stretch=False)
-        self.declarations_tree.column("declaration_number", width=200)
-        self.declarations_tree.column("tax_code", width=150)
-        self.declarations_tree.column("date", width=120)
-        self.declarations_tree.column("timestamp", width=180)
-        
-        # Configure alternating row colors and hover highlighting (Requirement 4.8)
-        ModernStyles.configure_treeview_tags(self.declarations_tree)
-        
-        # Bind hover events for highlighting
-        self.declarations_tree.bind('<Motion>', self._on_tree_hover)
-        self.declarations_tree.bind('<Leave>', self._on_tree_leave)
-        self._hover_item = None
-        
-        self.declarations_tree.pack(fill=tk.BOTH, expand=True)
-        
-        # Action buttons
-        action_frame = ttk.Frame(decl_frame)
-        action_frame.pack(fill=tk.X, pady=5)
-        
-        self.redownload_button = ttk.Button(
-            action_frame,
-            text="Re-download Selected",
-            command=self.redownload_selected,
-            width=20
-        )
-        self.redownload_button.pack(side=tk.LEFT, padx=5)
-        
-        self.open_location_button = ttk.Button(
-            action_frame,
-            text="Open File Location",
-            command=self.open_file_location,
-            width=20
-        )
-        self.open_location_button.pack(side=tk.LEFT, padx=5)
-        
-        refresh_button = ttk.Button(
-            action_frame,
-            text="Refresh",
-            command=self._load_processed_declarations,
-            width=12
-        )
-        refresh_button.pack(side=tk.LEFT, padx=5)
-    
-    # _create_log_panel removed per Requirements 9.1 to save vertical space
-    # Logs are now only written to the logger file
-    
-    # Event Handlers (Subtask 15.4)
-    # Note: start_automation, stop_automation, run_manual_cycle methods removed
-    # per Requirements 1.4 - Automatic mode buttons are no longer displayed
-    # The EnhancedManualPanel provides all necessary controls for manual operation
-    
-
-    
-    def browse_output_directory(self) -> None:
-        """Open directory selection dialog"""
-        try:
-            current_path = self.output_path_var.get()
-            
-            directory = filedialog.askdirectory(
-                title="Select Output Directory",
-                initialdir=current_path if os.path.exists(current_path) else None
+    def _on_add_to_tracking_click(self) -> None:
+        """Add to tracking - v2.0: Uses TrackingController."""
+        from gui.controllers.tracking_controller import TrackingController
+        if not hasattr(self, '_tracking_controller'):
+            self._tracking_controller = TrackingController(
+                tracking_db=self.tracking_db,
+                logger=self.logger,
+                root=self.root
             )
-            
-            if directory:
-                # Update configuration
-                self.config_manager.set_output_path(directory)
-                self.config_manager.save()
-                
-                # Update UI
-                self.output_path_var.set(directory)
-                
-                self.append_log("INFO", f"Output directory changed to: {directory}")
-                self.logger.info(f"Output directory changed to: {directory}")
-                
-        except Exception as e:
-            self.logger.error(f"Failed to change output directory: {e}", exc_info=True)
-            messagebox.showerror("Error", f"Failed to change output directory:\n{str(e)}")
+        if hasattr(self, 'preview_panel'):
+            selected = self.preview_panel.get_selected_declarations_data()
+            tracking_panel = getattr(self, 'tracking_panel', None)
+            self._tracking_controller.add_to_tracking(selected, tracking_panel)
     
-    def search_declarations(self) -> None:
-        """Search declarations by declaration number or tax code"""
-        try:
-            query = self.search_var.get().strip()
-            
-            if not query:
-                # If empty, load all declarations
-                self._load_processed_declarations()
-                return
-            
-            # Search in tracking database
-            results = self.tracking_db.search_declarations(query)
-            
-            # Update tree view
-            self._populate_declarations_tree(results)
-            
-            self.append_log("INFO", f"Search completed: {len(results)} results found")
-            
-        except Exception as e:
-            self.logger.error(f"Search failed: {e}", exc_info=True)
-            messagebox.showerror("Error", f"Search failed:\n{str(e)}")
+    def _on_download_tracking_declarations(self, declarations: List[dict]) -> None:
+        """Download tracking declarations - v2.0: Uses TrackingController."""
+        from gui.controllers.tracking_controller import TrackingController
+        if not hasattr(self, '_tracking_controller'):
+            self._tracking_controller = TrackingController(
+                tracking_db=self.tracking_db,
+                logger=self.logger,
+                root=self.root
+            )
+        panel = getattr(self, 'enhanced_manual_panel', None)
+        self._tracking_controller.download_tracking_declarations(declarations, panel)
     
-    def redownload_selected(self) -> None:
-        """Re-download barcodes for selected declarations"""
-        def redownload_in_thread():
+    def _on_manual_check_clearance(self):
+        """Manual trigger for clearance check service."""
+        if not hasattr(self, 'clearance_checker'):
+             messagebox.showinfo("Thông báo", "Dịch vụ tự động kiểm tra chưa được khởi tạo.")
+             return
+             
+        # Disable button? (Ideally we have a handle to the button or manage state)
+        if hasattr(self, 'tracking_panel'):
+            # self.tracking_panel.check_now_btn.config(state=tk.DISABLED)
+            # self.tracking_panel.stop_btn.config(state=tk.NORMAL)
+            pass
+            
+        def run_check():
             try:
-                # Get selected items
-                selected_items = self.declarations_tree.selection()
-                
-                if not selected_items:
-                    self.root.after(0, lambda: messagebox.showwarning("Warning", "No declarations selected"))
-                    return
-                
-                # Get declaration details
-                declarations_to_redownload = []
-                
-                for item_id in selected_items:
-                    values = self.declarations_tree.item(item_id, "values")
-                    if values:
-                        # Create Declaration object from stored data
-                        decl_number = values[0]
-                        tax_code = values[1]
-                        date_str = values[2]
-                        
-                        # Parse date
-                        try:
-                            date_obj = datetime.strptime(date_str, "%d/%m/%Y")
-                        except:
-                            date_obj = datetime.now()
-                        
-                        # Create minimal declaration object for re-download
-                        declaration = Declaration(
-                            declaration_number=decl_number,
-                            tax_code=tax_code,
-                            declaration_date=date_obj,
-                            customs_office_code="",  # Will be retrieved from tracking DB if needed
-                            transport_method="",
-                            channel="",
-                            status="T",
-                            goods_description=None
-                        )
-                        declarations_to_redownload.append(declaration)
-                
-                if not declarations_to_redownload:
-                    return
-                
-                self.append_log("INFO", f"Re-downloading {len(declarations_to_redownload)} declarations")
-                
-                # Disable button during execution
-                self.root.after(0, lambda: self.redownload_button.config(state=tk.DISABLED))
-                
-                # Execute re-download
-                result = self.scheduler.redownload_declarations(declarations_to_redownload)
-                
-                # Update statistics
-                self.root.after(0, lambda: self.update_statistics(result))
-                
-                # Re-enable button
-                self.root.after(0, lambda: self.redownload_button.config(state=tk.NORMAL))
-                
-                # Refresh declarations list
-                self.root.after(0, self._load_processed_declarations)
-                
-                self.append_log("INFO", f"Re-download completed: {result.success_count} successful, {result.error_count} errors")
+                if hasattr(self, 'tracking_panel'):
+                   self.root.after(0, self.tracking_panel.enable_stop_btn)
+                   
+                count = self.clearance_checker.check_now()
                 
                 self.root.after(0, lambda: messagebox.showinfo(
-                    "Re-download Complete",
-                    f"Re-download completed:\n{result.success_count} successful\n{result.error_count} errors"
+                    "Hoàn tất kiểm tra", 
+                    f"Đã kiểm tra xong.\nSố tờ khai thông quan mới: {count}"
                 ))
-                
             except Exception as e:
-                self.logger.error(f"Re-download failed: {e}", exc_info=True)
-                self.root.after(0, lambda: messagebox.showerror("Error", f"Re-download failed:\n{str(e)}"))
-                self.root.after(0, lambda: self.redownload_button.config(state=tk.NORMAL))
+                self.root.after(0, lambda: messagebox.showerror("Lỗi", f"Lỗi kiểm tra: {e}"))
+            finally:
+                if hasattr(self, 'tracking_panel'):
+                   self.root.after(0, self.tracking_panel.disable_stop_btn)
         
-        # Run in background thread
-        thread = threading.Thread(target=redownload_in_thread, daemon=True)
-        thread.start()
+        threading.Thread(target=run_check, daemon=True).start()
+            
+    def _on_stop_tracking_check(self):
+        """Stop current check."""
+        if hasattr(self, 'clearance_checker'):
+            self.clearance_checker.stop_current_check()
+
+    def _on_get_barcode(self, tax_code: str, date: datetime) -> None:
+        """Legacy handler, kept for compatibility if needed."""
+        pass
+        
+    def _on_clearance_status_changed(self):
+        """Callback when clearance status updates."""
+        if hasattr(self, 'tracking_panel'):
+            # Schedule update on main thread
+            self.root.after(0, self.tracking_panel.refresh)
     
-    def open_file_location(self) -> None:
-        """Open file location in file explorer"""
-        try:
-            # Get first selected item
-            selected_items = self.declarations_tree.selection()
+    def _show_database_config_dialog(self) -> None:
+        """Show database config - v2.0: Uses extracted DatabaseConfigDialog."""
+        from gui.dialogs.database_config_dialog import show_database_config_dialog
+        show_database_config_dialog(
+            parent=self.root,
+            config_manager=self.config_manager,
+            ecus_connector=self.ecus_connector,
+            logger=self.logger,
+            on_reconnect=self._check_database_connection
+        )
+    
+    def _show_settings_dialog(self) -> None:
+        """Show settings dialog - v2.0: Uses extracted SettingsDialog."""
+        from gui.settings_dialog import SettingsDialog
+        
+        def on_settings_changed(retrieval_method: str, pdf_naming_format: str):
+            """Callback when settings are saved."""
+            if hasattr(self, 'barcode_retriever') and self.barcode_retriever:
+                self.barcode_retriever.set_retrieval_method(retrieval_method)
+            if hasattr(self, 'file_manager') and self.file_manager:
+                self.file_manager.set_naming_format(pdf_naming_format)
+            self.logger.info(f"Settings updated: method={retrieval_method}, format={pdf_naming_format}")
+        
+        def on_auto_check_changed(enabled: bool, interval: int):
+            """Callback when auto-check settings change."""
+            print(f"DEBUG [customs_gui] on_auto_check_changed called: enabled={enabled}, interval={interval}")
             
-            if not selected_items:
-                messagebox.showwarning("Warning", "No declaration selected")
-                return
+            # Update tracking panel status label
+            print(f"DEBUG [customs_gui] hasattr tracking_panel: {hasattr(self, 'tracking_panel')}")
+            print(f"DEBUG [customs_gui] tracking_panel: {self.tracking_panel if hasattr(self, 'tracking_panel') else 'N/A'}")
             
-            # Get file path from tracking database
-            item_id = selected_items[0]
-            values = self.declarations_tree.item(item_id, "values")
-            
-            if values:
-                decl_number = values[0]
-                tax_code = values[1]
+            if hasattr(self, 'tracking_panel') and self.tracking_panel:
+                print(f"DEBUG [customs_gui] Calling tracking_panel.update_auto_status({enabled})...")
+                self.tracking_panel.update_auto_status(enabled)
+                print(f"DEBUG [customs_gui] update_auto_status completed")
                 
-                # Try to get file path from tracking database first
-                file_path = None
-                try:
-                    processed_list = self.tracking_db.get_all_processed()
-                    for processed in processed_list:
-                        if processed.declaration_number == decl_number and processed.tax_code == tax_code:
-                            file_path = processed.file_path
-                            break
-                except Exception as e:
-                    self.logger.warning(f"Could not get file path from tracking DB: {e}")
-                
-                # Fallback to constructing path from config if not found in DB
-                if not file_path:
-                    output_dir = self.config_manager.get_output_path()
-                    file_path = os.path.join(output_dir, f"{tax_code}_{decl_number}.pdf")
-                
-                # Normalize path
-                file_path = os.path.normpath(file_path)
-                
-                if os.path.exists(file_path):
-                    # Open file location in explorer
-                    if platform.system() == "Windows":
-                        # Use os.startfile to open the folder, then select the file
-                        folder_path = os.path.dirname(file_path)
-                        subprocess.run(["explorer", "/select,", file_path])
-                    elif platform.system() == "Darwin":  # macOS
-                        subprocess.run(["open", "-R", file_path])
-                    else:  # Linux
-                        subprocess.run(["xdg-open", os.path.dirname(file_path)])
-                    
-                    self.logger.info(f"Opened file location: {file_path}")
+                if enabled:
+                    # Start/restart countdown and clearance checker
+                    self.tracking_panel.start_countdown(interval)
+                    if hasattr(self, 'clearance_checker') and self.clearance_checker:
+                        self.clearance_checker.set_config(enabled, interval)
+                        self.clearance_checker.start()
                 else:
-                    # File not found, try to open the output directory instead
-                    output_dir = self.config_manager.get_output_path()
-                    if os.path.exists(output_dir):
-                        if platform.system() == "Windows":
-                            os.startfile(output_dir)
-                        elif platform.system() == "Darwin":
-                            subprocess.run(["open", output_dir])
-                        else:
-                            subprocess.run(["xdg-open", output_dir])
-                        messagebox.showinfo("Thông báo", f"File không tồn tại:\n{file_path}\n\nĐã mở thư mục lưu file.")
-                    else:
-                        messagebox.showwarning("Warning", f"File not found:\n{file_path}")
-                    
-        except Exception as e:
-            self.logger.error(f"Failed to open file location: {e}", exc_info=True)
-            messagebox.showerror("Error", f"Failed to open file location:\n{str(e)}")
-    
-    # GUI Update Methods (Subtask 15.5)
-    
-    def update_statistics(self, result: WorkflowResult) -> None:
-        """
-        Update statistics display after workflow execution
+                    # Stop countdown and clearance checker
+                    self.tracking_panel.stop_countdown()
+                    if hasattr(self, 'clearance_checker') and self.clearance_checker:
+                        self.clearance_checker.stop()
+            else:
+                print("DEBUG [customs_gui] WARNING: tracking_panel not found!")
+                        
+            self.logger.info(f"Auto-check settings updated: enabled={enabled}, interval={interval}min")
         
-        Args:
-            result: WorkflowResult from workflow execution
-        """
-        # Update cumulative statistics
-        self.total_processed += result.total_eligible
-        self.total_success += result.success_count
-        self.total_errors += result.error_count
-        self.last_run_time = result.end_time or datetime.now()
-        
-        # Update labels
-        self.processed_label.config(text=str(self.total_processed))
-        self.success_label.config(text=str(self.total_success))
-        self.errors_label.config(text=str(self.total_errors))
-        
-        if self.last_run_time:
-            self.last_run_label.config(text=self.last_run_time.strftime("%Y-%m-%d %H:%M:%S"))
+        dialog = SettingsDialog(
+            self.root,
+            self.config_manager,
+            on_settings_changed=on_settings_changed,
+            theme_manager=self.theme_manager,
+            on_auto_check_changed=on_auto_check_changed
+        )
     
     def _on_download_complete(self, success_count: int, error_count: int) -> None:
         """
         Callback when download completes from EnhancedManualPanel.
         
-        Updates statistics display with download results using StatisticsBar and CompactStatusBar.
-        Shows desktop notification if enabled.
-        
         Args:
             success_count: Number of successful downloads
             error_count: Number of failed downloads
-            
-        Requirements: 2.1, 2.2, 2.5, 10.1, 10.2, 10.3, 10.4
         """
-        # Update cumulative statistics
-        self.total_processed += success_count + error_count
-        self.total_success += success_count
-        self.total_errors += error_count
-        self.last_run_time = datetime.now()
+        # Update statistics bar
+        if hasattr(self, 'statistics_bar'):
+            self.statistics_bar.update_counts(
+                processed=success_count + error_count,
+                retrieved=success_count,
+                errors=error_count
+            )
         
-        # Update StatisticsBar component
-        self.statistics_bar.update_stats(
-            processed=self.total_processed,
-            retrieved=self.total_success,
-            errors=self.total_errors,
-            last_run=self.last_run_time
-        )
-        
-        # Update CompactStatusBar if available (Requirement 2.2)
+        # Update compact status bar  
         if hasattr(self, 'compact_status_bar'):
-            self.compact_status_bar.update_statistics(
-                processed=self.total_processed,
-                retrieved=self.total_success,
-                errors=self.total_errors,
-                last_run=self.last_run_time
-            )
+            status = "Ready" if error_count == 0 else f"{error_count} errors"
+            self.compact_status_bar.set_status(status)
         
-        # Show desktop notification (Requirements 2.1, 2.5)
-        if self.notification_manager:
-            self.notification_manager.notify_batch_complete(success_count, error_count)
+        # Show desktop notification
+        if hasattr(self, 'notification_manager') and self.notification_manager:
+            self.notification_manager.notify_download_complete(success_count, error_count)
         
-        self.logger.info(f"Statistics updated: processed={self.total_processed}, success={self.total_success}, errors={self.total_errors}")
-    
-    def _load_processed_declarations(self) -> None:
-        """Load and display all processed declarations"""
-        try:
-            # Skip if declarations_tree doesn't exist (two-column layout mode)
-            if not hasattr(self, 'declarations_tree') or self.declarations_tree is None:
-                return
-                
-            # Get all processed declarations from tracking database
-            declarations = self.tracking_db.get_all_processed_details()
-            
-            # Populate tree view
-            self._populate_declarations_tree(declarations)
-            
-            self.logger.debug(f"Loaded {len(declarations)} processed declarations")
-            
-        except Exception as e:
-            self.logger.error(f"Failed to load processed declarations: {e}", exc_info=True)
-            self.append_log("ERROR", f"Failed to load declarations: {str(e)}")
-    
-    def _populate_declarations_tree(self, declarations: List[ProcessedDeclaration]) -> None:
-        """
-        Populate tree view with declarations
-        
-        Args:
-            declarations: List of ProcessedDeclaration objects
-        """
-        # Skip if declarations_tree doesn't exist (two-column layout mode)
-        if not hasattr(self, 'declarations_tree') or self.declarations_tree is None:
-            return
-            
-        # Clear existing items
-        for item in self.declarations_tree.get_children():
-            self.declarations_tree.delete(item)
-        
-        # Add declarations with alternating row colors (Requirement 4.8)
-        for index, decl in enumerate(declarations):
-            # Format date
-            try:
-                date_obj = datetime.strptime(decl.declaration_date, "%Y%m%d")
-                date_str = date_obj.strftime("%d/%m/%Y")
-            except:
-                date_str = decl.declaration_date
-            
-            # Format timestamp
-            timestamp_str = decl.processed_at.strftime("%Y-%m-%d %H:%M:%S")
-            
-            # Determine row tag for alternating colors
-            row_tag = 'evenrow' if index % 2 == 0 else 'oddrow'
-            
-            # Insert into tree with alternating row tag
-            self.declarations_tree.insert(
-                "",
-                tk.END,
-                text="☐",
-                values=(
-                    decl.declaration_number,
-                    decl.tax_code,
-                    date_str,
-                    timestamp_str
-                ),
-                tags=(row_tag,)
-            )
-    
-    def _on_tree_hover(self, event) -> None:
-        """Handle hover event on treeview for highlighting (Requirement 4.8)"""
-        item = self.declarations_tree.identify_row(event.y)
-        if item and item != self._hover_item:
-            # Restore previous item's original tag
-            if self._hover_item:
-                self._restore_row_tag(self._hover_item)
-            
-            # Apply hover tag to current item
-            self._hover_item = item
-            current_tags = self.declarations_tree.item(item, 'tags')
-            if current_tags and 'hover' not in current_tags:
-                # Store original tag and apply hover
-                self.declarations_tree.item(item, tags=('hover',))
-    
-    def _on_tree_leave(self, event) -> None:
-        """Handle leave event on treeview to remove highlighting"""
-        if self._hover_item:
-            self._restore_row_tag(self._hover_item)
-            self._hover_item = None
-    
-    def _restore_row_tag(self, item: str) -> None:
-        """Restore the original alternating row tag for an item"""
-        try:
-            # Get item index to determine original tag
-            children = self.declarations_tree.get_children()
-            if item in children:
-                index = children.index(item)
-                original_tag = 'evenrow' if index % 2 == 0 else 'oddrow'
-                self.declarations_tree.item(item, tags=(original_tag,))
-        except (ValueError, tk.TclError):
-            pass
-    
-    def append_log(self, level: str, message: str) -> None:
-        """
-        Log message to logger (Recent Logs panel removed per Requirements 9.1)
-        
-        Args:
-            level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-            message: Log message
-        """
-        # Log to logger instead of removed log_text widget
-        log_method = getattr(self.logger, level.lower(), self.logger.info)
-        log_method(message)
+        self.logger.info(f"Download completed: {success_count} success, {error_count} errors")
     
     def _check_database_connection(self) -> None:
-        """Check database connection status in background"""
+        """Check database connection status in background."""
         def check_in_thread():
             try:
                 is_connected = self.ecus_connector.test_connection()
-                
-                if is_connected:
-                    self.root.after(0, lambda: self.db_status_label.config(
-                        text="● Connected", 
-                        foreground=ModernStyles.SUCCESS_COLOR
-                    ))
-                    self.append_log("INFO", "Database connection successful")
-                else:
-                    # Try to connect
-                    if self.ecus_connector.connect():
-                        self.root.after(0, lambda: self.db_status_label.config(
-                            text="● Connected", 
-                            foreground=ModernStyles.SUCCESS_COLOR
-                        ))
-                        self.append_log("INFO", "Database connection established")
-                    else:
-                        self.root.after(0, lambda: self.db_status_label.config(
-                            text="● Disconnected", 
-                            foreground=ModernStyles.ERROR_COLOR
-                        ))
-                        self.append_log("ERROR", "Failed to connect to database")
-                        
-                        # Show desktop notification for database connection failure (Requirement 2.2)
-                        if self.notification_manager:
-                            self.root.after(0, lambda: 
-                                self.notification_manager.notify_database_error("Không thể kết nối đến cơ sở dữ liệu"))
-                        
+                if not is_connected:
+                    is_connected = self.ecus_connector.connect()
+                self.root.after(0, lambda: self._update_db_status(is_connected))
             except Exception as e:
-                self.logger.error(f"Database connection check failed: {e}", exc_info=True)
-                self.root.after(0, lambda: self.db_status_label.config(
-                    text="● Error", 
-                    foreground=ModernStyles.ERROR_COLOR
-                ))
-                self.append_log("ERROR", f"Database connection error: {str(e)}")
-                
-                # Show desktop notification for database error (Requirement 2.2)
-                if self.notification_manager:
-                    self.root.after(0, lambda err=str(e): 
-                        self.notification_manager.notify_database_error(err))
-        
-        thread = threading.Thread(target=check_in_thread, daemon=True)
-        thread.start()
+                self.logger.error(f"Database connection check failed: {e}")
+                self.root.after(0, lambda: self._update_db_status(False))
+        import threading
+        threading.Thread(target=check_in_thread, daemon=True).start()
     
     def _update_db_status(self, is_connected: bool) -> None:
-        """
-        Update database connection status in GUI.
-        
-        Args:
-            is_connected: True if connected, False otherwise
-        """
+        """Update database connection status in GUI."""
         if is_connected:
-            # Update CompactStatusBar if available
-            if hasattr(self, 'compact_status_bar'):
-                self.compact_status_bar.update_db_status(True, "Connected")
-            else:
-                self.db_status_label.config(
-                    text="● Connected", 
-                    foreground=ModernStyles.SUCCESS_COLOR
-                )
-            self.append_log("INFO", "Database connection established")
+            if hasattr(self, 'db_status_label'):
+                self.db_status_label.config(text="● Connected", foreground=ModernStyles.SUCCESS_COLOR)
+            self.append_log("INFO", "Database connection successful")
         else:
-            # Update CompactStatusBar if available
-            if hasattr(self, 'compact_status_bar'):
-                self.compact_status_bar.update_db_status(False, "Disconnected")
-            else:
-                self.db_status_label.config(
-                    text="● Disconnected", 
-                    foreground=ModernStyles.ERROR_COLOR
-                )
-            self.append_log("WARNING", "Database disconnected")
+            if hasattr(self, 'db_status_label'):
+                self.db_status_label.config(text="● Disconnected", foreground=ModernStyles.ERROR_COLOR)
+            self.append_log("ERROR", "Database connection failed")
+            if hasattr(self, 'notification_manager') and self.notification_manager:
+                self.notification_manager.notify_database_error("Không thể kết nối đến CSDL")
+    
+    def _on_clearance_status_changed(self) -> None:
+        """
+        Callback called by ClearanceChecker when status changes.
+        Schedules tracking panel refresh on main thread.
+        """
+        try:
+            # Schedule refresh on main thread since this is called from background thread
+            self.root.after(0, self._refresh_tracking_panel)
+        except Exception as e:
+            self.logger.error(f"Error scheduling tracking panel refresh: {e}")
+    
+    def _refresh_tracking_panel(self) -> None:
+        """Refresh tracking panel from main thread and reset countdown timer."""
+        try:
+            self.logger.info("_refresh_tracking_panel called - refreshing UI and resetting countdown")
+            
+            if hasattr(self, 'tracking_panel') and self.tracking_panel:
+                self.tracking_panel.refresh()
+                self.logger.info("Tracking panel refreshed after clearance check")
+                
+                # Reset countdown timer if auto check is enabled
+                from config.user_preferences import get_preferences
+                prefs = get_preferences()
+                if prefs.auto_check_enabled:
+                    self.tracking_panel.reset_countdown(prefs.auto_check_interval)
+                    self.logger.info(f"Countdown timer reset to {prefs.auto_check_interval} minutes")
+        except Exception as e:
+            self.logger.error(f"Error refreshing tracking panel: {e}")
+    
+    def update_statistics(self, result) -> None:
+        """Update statistics display after workflow execution."""
+        if hasattr(self, 'statistics_bar'):
+            self.statistics_bar.update_counts(
+                processed=result.total_processed if hasattr(result, 'total_processed') else result.success_count + result.error_count,
+                retrieved=result.success_count,
+                errors=result.error_count
+            )
+        self.total_processed += result.success_count + result.error_count
+        self.total_success += result.success_count
+        self.total_errors += result.error_count
+        self.last_run_time = datetime.now()
+    
+    def append_log(self, level: str, message: str) -> None:
+        """Log message to logger."""
+        log_method = getattr(self.logger, level.lower(), self.logger.info)
+        log_method(message)
+    
+    def _load_processed_declarations(self) -> None:
+        """Load and display all processed declarations."""
+        try:
+            declarations = self.tracking_db.get_all_processed_declarations()
+            self._populate_declarations_tree(declarations)
+        except Exception as e:
+            self.logger.error(f"Failed to load processed declarations: {e}")
+    
+    def _populate_declarations_tree(self, declarations) -> None:
+        """Populate tree view with declarations."""
+        if not hasattr(self, 'declarations_tree'):
+            return
+        # Clear existing items
+        for item in self.declarations_tree.get_children():
+            self.declarations_tree.delete(item)
+        # Add declarations
+        for i, decl in enumerate(declarations):
+            tag = 'evenrow' if i % 2 == 0 else 'oddrow'
+            self.declarations_tree.insert('', 'end', values=(
+                decl.declaration_number if hasattr(decl, 'declaration_number') else decl.get('declaration_number', ''),
+                decl.tax_code if hasattr(decl, 'tax_code') else decl.get('tax_code', ''),
+                decl.declaration_date.strftime('%d/%m/%Y') if hasattr(decl, 'declaration_date') and decl.declaration_date else '',
+                decl.processed_at.strftime('%d/%m/%Y %H:%M') if hasattr(decl, 'processed_at') and decl.processed_at else ''
+            ), tags=(tag,))
+    
+    def search_declarations(self) -> None:
+        """Search declarations based on search_var."""
+        if not hasattr(self, 'search_var'):
+            return
+        query = self.search_var.get().strip()
+        if not query:
+            self._load_processed_declarations()
+            return
+        try:
+            results = self.tracking_db.search_declarations(query)
+            self._populate_declarations_tree(results)
+        except Exception as e:
+            self.logger.error(f"Search failed: {e}")
     
     def get_statistics(self) -> dict:
-        """
-        Get current statistics
-        
-        Returns:
-            Dictionary with statistics
-        """
+        """Get current statistics."""
         return {
             "total_processed": self.total_processed,
             "total_success": self.total_success,
@@ -1448,388 +816,319 @@ class CustomsAutomationGUI:
             "last_run_time": self.last_run_time
         }
     
-    def _show_database_config_dialog(self) -> None:
-        """Show database configuration dialog with profile support"""
-        from models.config_models import DatabaseProfile
+    def _on_download_tracking_declarations(self, declarations: list) -> None:
+        """Handle 'Get Barcode' from Tracking Panel - trigger download for passed declarations."""
+        if not declarations:
+            from tkinter import messagebox
+            messagebox.showwarning("Cảnh báo", "Không có tờ khai để tải mã vạch.")
+            return
         
-        # Create dialog window
-        dialog = tk.Toplevel(self.root)
-        dialog.title("Cấu hình Cơ sở dữ liệu")
-        dialog.geometry("500x400")
-        dialog.resizable(False, False)
-        dialog.transient(self.root)
-        dialog.grab_set()
+        self.logger.info(f"Downloading barcodes for {len(declarations)} tracking declarations...")
         
-        # Apply current theme to dialog background
-        if self.theme_manager:
-            colors = self.theme_manager.get_theme_colors()
-            dialog.configure(bg=colors['bg_primary'])
-        
-        # Center dialog on parent window
-        dialog.update_idletasks()
-        x = self.root.winfo_x() + (self.root.winfo_width() - dialog.winfo_width()) // 2
-        y = self.root.winfo_y() + (self.root.winfo_height() - dialog.winfo_height()) // 2
-        dialog.geometry(f"+{x}+{y}")
-        
-        # Main frame with padding
-        main_frame = ttk.Frame(dialog, padding=20)
-        main_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Get current config and profiles
-        try:
-            db_config = self.config_manager.get_database_config()
-            current_server = db_config.server
-            current_database = db_config.database
-            current_username = db_config.username
-            current_password = db_config.password
-        except Exception:
-            current_server = "Server"
-            current_database = "ECUS5VNACCS"
-            current_username = "sa"
-            current_password = ""
-        
-        profiles = self.config_manager.get_database_profiles()
-        profile_names = [p.name for p in profiles]
-        active_profile = self.config_manager.get_active_profile_name()
-        
-        # Variables
-        server_var = tk.StringVar(value=current_server)
-        database_var = tk.StringVar(value=current_database)
-        username_var = tk.StringVar(value=current_username)
-        password_var = tk.StringVar(value=current_password)
-        profile_var = tk.StringVar(value=active_profile if active_profile else "(Không có profile)")
-        
-        # ===== Profile Section =====
-        profile_frame = ttk.LabelFrame(main_frame, text="Profile", padding=10)
-        profile_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        profile_row = ttk.Frame(profile_frame)
-        profile_row.pack(fill=tk.X)
-        
-        ttk.Label(profile_row, text="Profile:").pack(side=tk.LEFT, padx=(0, 10))
-        
-        # Profile dropdown
-        profile_combo = ttk.Combobox(
-            profile_row, 
-            textvariable=profile_var,
-            values=profile_names if profile_names else ["(Không có profile)"],
-            state="readonly",
-            width=25
-        )
-        profile_combo.pack(side=tk.LEFT, padx=(0, 10))
-        
-        def on_profile_selected(event=None):
-            """Load selected profile into form"""
-            selected = profile_var.get()
-            if selected and selected != "(Không có profile)":
-                profile = self.config_manager.get_database_profile(selected)
-                if profile:
-                    server_var.set(profile.server)
-                    database_var.set(profile.database)
-                    username_var.set(profile.username)
-                    password_var.set(profile.password)
-                    status_label.config(text=f"Đã tải profile: {selected}", foreground=ModernStyles.INFO_COLOR)
-        
-        profile_combo.bind("<<ComboboxSelected>>", on_profile_selected)
-        
-        def save_new_profile():
-            """Save current form as new profile"""
-            # Ask for profile name
-            name_dialog = tk.Toplevel(dialog)
-            name_dialog.title("Lưu Profile Mới")
-            name_dialog.geometry("300x120")
-            name_dialog.transient(dialog)
-            name_dialog.grab_set()
-            
-            # Center
-            name_dialog.update_idletasks()
-            nx = dialog.winfo_x() + (dialog.winfo_width() - name_dialog.winfo_width()) // 2
-            ny = dialog.winfo_y() + (dialog.winfo_height() - name_dialog.winfo_height()) // 2
-            name_dialog.geometry(f"+{nx}+{ny}")
-            
-            name_frame = ttk.Frame(name_dialog, padding=15)
-            name_frame.pack(fill=tk.BOTH, expand=True)
-            
-            ttk.Label(name_frame, text="Tên profile:").pack(anchor=tk.W)
-            name_var = tk.StringVar()
-            name_entry = ttk.Entry(name_frame, textvariable=name_var, width=35)
-            name_entry.pack(fill=tk.X, pady=5)
-            name_entry.focus_set()
-            
-            def do_save():
-                name = name_var.get().strip()
-                if not name:
-                    messagebox.showwarning("Cảnh báo", "Vui lòng nhập tên profile!")
-                    return
-                
-                # Create and save profile
-                profile = DatabaseProfile(
-                    name=name,
-                    server=server_var.get().strip(),
-                    database=database_var.get().strip(),
-                    username=username_var.get().strip(),
-                    password=password_var.get()
-                )
-                self.config_manager.save_database_profile(profile)
-                
-                # Update dropdown
-                profiles = self.config_manager.get_database_profiles()
-                profile_names = [p.name for p in profiles]
-                profile_combo['values'] = profile_names
-                profile_var.set(name)
-                
-                status_label.config(text=f"Đã lưu profile: {name}", foreground=ModernStyles.SUCCESS_COLOR)
-                name_dialog.destroy()
-            
-            btn_frame = ttk.Frame(name_frame)
-            btn_frame.pack(fill=tk.X, pady=(10, 0))
-            ttk.Button(btn_frame, text="Lưu", command=do_save, width=10).pack(side=tk.LEFT, padx=5)
-            ttk.Button(btn_frame, text="Hủy", command=name_dialog.destroy, width=10).pack(side=tk.LEFT)
-            
-            name_entry.bind("<Return>", lambda e: do_save())
-        
-        def delete_profile():
-            """Delete selected profile"""
-            selected = profile_var.get()
-            if not selected or selected == "(Không có profile)":
-                messagebox.showwarning("Cảnh báo", "Vui lòng chọn profile để xóa!")
-                return
-            
-            if messagebox.askyesno("Xác nhận", f"Bạn có chắc muốn xóa profile '{selected}'?"):
-                self.config_manager.delete_database_profile(selected)
-                
-                # Update dropdown
-                profiles = self.config_manager.get_database_profiles()
-                profile_names = [p.name for p in profiles]
-                profile_combo['values'] = profile_names if profile_names else ["(Không có profile)"]
-                profile_var.set(profile_names[0] if profile_names else "(Không có profile)")
-                
-                status_label.config(text=f"Đã xóa profile: {selected}", foreground=ModernStyles.INFO_COLOR)
-        
-        # Profile buttons
-        ttk.Button(profile_row, text="Lưu mới", command=save_new_profile, width=10).pack(side=tk.LEFT, padx=2)
-        ttk.Button(profile_row, text="Xóa", command=delete_profile, width=8).pack(side=tk.LEFT, padx=2)
-        
-        # ===== Connection Details Section =====
-        details_frame = ttk.LabelFrame(main_frame, text="Thông tin kết nối", padding=10)
-        details_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        # Server
-        row0 = ttk.Frame(details_frame)
-        row0.pack(fill=tk.X, pady=3)
-        ttk.Label(row0, text="Server:", width=12).pack(side=tk.LEFT)
-        ttk.Entry(row0, textvariable=server_var, width=40).pack(side=tk.LEFT, fill=tk.X, expand=True)
-        
-        # Database
-        row1 = ttk.Frame(details_frame)
-        row1.pack(fill=tk.X, pady=3)
-        ttk.Label(row1, text="Cơ sở dữ liệu:", width=12).pack(side=tk.LEFT)
-        ttk.Entry(row1, textvariable=database_var, width=40).pack(side=tk.LEFT, fill=tk.X, expand=True)
-        
-        # Username
-        row2 = ttk.Frame(details_frame)
-        row2.pack(fill=tk.X, pady=3)
-        ttk.Label(row2, text="Tài khoản:", width=12).pack(side=tk.LEFT)
-        ttk.Entry(row2, textvariable=username_var, width=40).pack(side=tk.LEFT, fill=tk.X, expand=True)
-        
-        # Password
-        row3 = ttk.Frame(details_frame)
-        row3.pack(fill=tk.X, pady=3)
-        ttk.Label(row3, text="Mật khẩu:", width=12).pack(side=tk.LEFT)
-        password_entry = ttk.Entry(row3, textvariable=password_var, width=40, show="*")
-        password_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        
-        # Show/Hide password
-        show_password_var = tk.BooleanVar(value=False)
-        def toggle_password():
-            password_entry.config(show="" if show_password_var.get() else "*")
-        
-        ttk.Checkbutton(
-            details_frame, 
-            text="Hiện mật khẩu", 
-            variable=show_password_var,
-            command=toggle_password
-        ).pack(anchor=tk.W, pady=(5, 0))
-        
-        # Status label
-        status_label = ttk.Label(main_frame, text="", foreground=ModernStyles.INFO_COLOR)
-        status_label.pack(fill=tk.X, pady=5)
-        
-        # ===== Action Buttons =====
-        button_frame = ttk.Frame(main_frame)
-        button_frame.pack(fill=tk.X, pady=10)
-        
-        def test_connection():
-            """Test database connection with current settings"""
-            status_label.config(text="Đang kiểm tra kết nối...", foreground=ModernStyles.INFO_COLOR)
-            dialog.update()
-            
-            try:
-                import pyodbc
-                server = server_var.get().strip()
-                database = database_var.get().strip()
-                username = username_var.get().strip()
-                password = password_var.get()
-                
-                connection_string = (
-                    f"DRIVER={{SQL Server}};"
-                    f"SERVER={server};"
-                    f"DATABASE={database};"
-                    f"UID={username};"
-                    f"PWD={password};"
-                    f"Connection Timeout=10"
-                )
-                
-                conn = pyodbc.connect(connection_string, timeout=10)
-                conn.close()
-                
-                status_label.config(text="✓ Kết nối thành công!", foreground=ModernStyles.SUCCESS_COLOR)
-                
-            except Exception as e:
-                status_label.config(text=f"✗ Lỗi: {str(e)[:50]}...", foreground=ModernStyles.ERROR_COLOR)
-        
-        def save_and_reconnect():
-            """Save database configuration and reconnect immediately"""
-            try:
-                server = server_var.get().strip()
-                database = database_var.get().strip()
-                username = username_var.get().strip()
-                password = password_var.get()
-                
-                if not all([server, database, username]):
-                    messagebox.showwarning("Cảnh báo", "Vui lòng điền đầy đủ thông tin!")
-                    return
-                
-                # Save to Database section
-                self.config_manager.set_database_config(server, database, username, password)
-                
-                # Update active profile if one is selected
-                selected_profile = profile_var.get()
-                if selected_profile and selected_profile != "(Không có profile)":
-                    # Update the profile with new values
-                    profile = DatabaseProfile(
-                        name=selected_profile,
-                        server=server,
-                        database=database,
-                        username=username,
-                        password=password
-                    )
-                    self.config_manager.save_database_profile(profile)
-                    self.config_manager.config.set('Database', 'active_profile', selected_profile)
-                    self.config_manager._save_config_file()
-                
-                # Try to reconnect with new settings
-                status_label.config(text="Đang kết nối lại...", foreground=ModernStyles.INFO_COLOR)
-                dialog.update()
-                
-                try:
-                    # Disconnect current connection if any
-                    if self.ecus_connector:
-                        self.ecus_connector.disconnect()
-                    
-                    # Update connector with new config
-                    new_db_config = self.config_manager.get_database_config()
-                    self.ecus_connector.config = new_db_config
-                    
-                    # Try to connect
-                    if self.ecus_connector.connect():
-                        self.logger.info("Database reconnected successfully with new configuration")
-                        self._update_db_status(True)
-                        messagebox.showinfo("Thành công", "Đã lưu cấu hình và kết nối lại thành công!")
-                        dialog.destroy()
-                    else:
-                        self._update_db_status(False)
-                        status_label.config(text="✗ Lưu thành công nhưng kết nối thất bại", foreground=ModernStyles.ERROR_COLOR)
-                        messagebox.showwarning("Cảnh báo", "Đã lưu cấu hình nhưng không thể kết nối.\nVui lòng kiểm tra lại thông tin kết nối.")
-                        
-                except Exception as conn_error:
-                    self._update_db_status(False)
-                    self.logger.error(f"Failed to reconnect: {conn_error}")
-                    status_label.config(text=f"✗ Lỗi kết nối: {str(conn_error)[:40]}...", foreground=ModernStyles.ERROR_COLOR)
-                    messagebox.showwarning("Cảnh báo", f"Đã lưu cấu hình nhưng không thể kết nối:\n{str(conn_error)}")
-                
-            except Exception as e:
-                self.logger.error(f"Failed to save database config: {e}")
-                messagebox.showerror("Lỗi", f"Không thể lưu cấu hình:\n{str(e)}")
-        
-        # Get theme colors for buttons
-        theme_colors = self.theme_manager.get_theme_colors() if self.theme_manager else {}
-        btn_accent = theme_colors.get('accent', ModernStyles.PRIMARY_COLOR)
-        btn_success = theme_colors.get('success', ModernStyles.SUCCESS_COLOR)
-        btn_bg_secondary = theme_colors.get('bg_secondary', ModernStyles.BG_SECONDARY)
-        btn_text_primary = theme_colors.get('text_primary', ModernStyles.TEXT_PRIMARY)
-        btn_highlight = theme_colors.get('highlight', ModernStyles.BG_HOVER)
-        
-        # Buttons - Use tk.Button instead of ttk.Button for better text visibility in dark mode
-        tk.Button(
-            button_frame, 
-            text="Kiểm tra kết nối", 
-            command=test_connection, 
-            width=15,
-            bg=btn_accent,
-            fg="#ffffff",
-            activebackground=btn_accent,
-            activeforeground="#ffffff",
-            relief=tk.FLAT,
-            cursor="hand2"
-        ).pack(side=tk.LEFT, padx=5)
-        
-        tk.Button(
-            button_frame, 
-            text="Lưu & Kết nối", 
-            command=save_and_reconnect, 
-            width=14,
-            bg=btn_success,
-            fg="#ffffff",
-            activebackground=btn_success,
-            activeforeground="#ffffff",
-            relief=tk.FLAT,
-            cursor="hand2"
-        ).pack(side=tk.LEFT, padx=5)
-        
-        tk.Button(
-            button_frame, 
-            text="Đóng", 
-            command=dialog.destroy, 
-            width=10,
-            bg=btn_bg_secondary,
-            fg=btn_text_primary,
-            activebackground=btn_highlight,
-            activeforeground=btn_text_primary,
-            relief=tk.FLAT,
-            cursor="hand2"
-        ).pack(side=tk.LEFT, padx=5)
+        # Use EnhancedManualPanel to download
+        if hasattr(self, 'enhanced_manual_panel') and self.enhanced_manual_panel:
+            # Convert tracking format to download format
+            for decl in declarations:
+                if 'decl_number' in decl and 'declaration_number' not in decl:
+                    decl['declaration_number'] = decl['decl_number']
+            self.enhanced_manual_panel.download_specific_declarations(declarations)
+        else:
+            from tkinter import messagebox
+            messagebox.showerror("Lỗi", "Không thể tải mã vạch - panel không sẵn sàng.")
     
+    def _on_add_to_tracking_click(self) -> None:
+        """Handle 'Add to Tracking' from Preview Panel - add selected declarations."""
+        if not hasattr(self, 'preview_panel'):
+            return
+        
+        selected = self.preview_panel.get_selected_declarations_data()
+        if not selected:
+            from tkinter import messagebox
+            messagebox.showwarning("Cảnh báo", "Vui lòng chọn tờ khai để thêm vào theo dõi.")
+            return
+        
+        added_count = 0
+        for decl in selected:
+            try:
+                decl_number = decl.get('declaration_number') or decl.get('decl_number')
+                tax_code = decl.get('tax_code')
+                decl_date = decl.get('date') or decl.get('declaration_date')
+                company_name = decl.get('company_name', '')  # Issue 4.1b: Include company name
+                customs_code = decl.get('customs_office_code') or decl.get('customs_code', '')
+                
+                if isinstance(decl_date, str):
+                    try:
+                        decl_date = datetime.strptime(decl_date, "%d/%m/%Y")
+                    except:
+                        try:
+                            decl_date = datetime.strptime(decl_date, "%Y-%m-%d")
+                        except:
+                            decl_date = datetime.now()
+                
+                # Add to tracking with company name
+                self.tracking_db.add_to_tracking(
+                    declaration_number=decl_number,
+                    tax_code=tax_code,
+                    declaration_date=decl_date,
+                    company_name=company_name,
+                    customs_code=customs_code
+                )
+                added_count += 1
+            except Exception as e:
+                self.logger.warning(f"Failed to add {decl.get('declaration_number')}: {e}")
+        
+        # Refresh tracking panel
+        if hasattr(self, 'tracking_panel'):
+            self.tracking_panel.refresh()
+        
+        from tkinter import messagebox
+        messagebox.showinfo("Hoàn tất", f"Đã thêm {added_count}/{len(selected)} tờ khai vào danh sách theo dõi.")
+    
+    def _on_check_clearance_click(self) -> None:
+        """Handle 'Check Clearance' from Preview Panel - removed, redirect to tracking tab."""
+        # Issue 3: This button is being removed, but keep method for safety
+        from tkinter import messagebox
+        messagebox.showinfo("Thông báo", "Vui lòng dùng tab 'Theo dõi thông quan' để kiểm tra trạng thái.")
+    
+    def _on_manual_check_clearance(self, ids: list = None) -> None:
+        """Handle 'Check Now' from Tracking Panel - trigger immediate clearance check."""
+        if hasattr(self, 'clearance_checker') and self.clearance_checker:
+            def run_check():
+                try:
+                    # Show progress bar
+                    if hasattr(self, 'tracking_panel'):
+                        self.root.after(0, self.tracking_panel.show_progress)
+                        self.root.after(0, self.tracking_panel.enable_stop_btn)
+                    
+                    # Get pending count for progress
+                    pending_ids = ids if ids else []
+                    if not pending_ids and hasattr(self, 'tracking_db'):
+                        try:
+                            pending_items = self.tracking_db.get_all_tracking()
+                            pending_ids = [d.id for d in pending_items if d.status.value == 'pending']
+                        except:
+                            pass
+                    
+                    total = len(pending_ids) if pending_ids else 1
+                    
+                    # Progress callback for real-time updates
+                    def on_progress(current, checked_count, decl_id=None, new_status=None, last_checked=None, cleared_at=None):
+                        if hasattr(self, 'tracking_panel'):
+                            self.root.after(0, lambda: self.tracking_panel.update_progress(
+                                current, total, f"Đang kiểm tra {current}/{total}..."
+                            ))
+                            if decl_id and new_status:
+                                self.root.after(0, lambda: self.tracking_panel.update_item_status(
+                                    decl_id, new_status, last_checked, cleared_at
+                                ))
+                    
+                    # Pass IDs and progress callback if supported
+                    count = self.clearance_checker.check_now(ids_to_check=ids, progress_callback=on_progress)
+                    
+                    # Hide progress and refresh
+                    if hasattr(self, 'tracking_panel'):
+                        self.root.after(0, self.tracking_panel.hide_progress)
+                        self.root.after(0, self.tracking_panel.refresh)
+                    
+                    # Get updated data for results dialog
+                    check_results = []
+                    try:
+                        from gui.dialogs.check_results_dialog import CheckResultsDialog, CheckResult
+                        all_tracking = self.tracking_db.get_all_tracking()
+                        
+                        self.logger.info(f"=== DEBUG: After check_now, count={count} ===")
+                        self.logger.info(f"=== DEBUG: ids to check = {ids} ===")
+                        
+                        # Filter to get checked items (if specific IDs, use them; else use all just checked)
+                        checked_items = all_tracking if not ids else [d for d in all_tracking if d.id in ids]
+                        
+                        self.logger.info(f"=== DEBUG: checked_items count = {len(checked_items)} ===")
+                        for decl in checked_items:
+                            self.logger.info(f"  - {decl.declaration_number}: DB status = '{decl.status.value}'")
+                        
+                        for decl in checked_items:
+                            status_map = {
+                                'cleared': ('cleared', 'Đã thông quan'),
+                                'transfer': ('transfer', 'Chuyển địa điểm'),
+                                'pending': ('pending', 'Chưa thông quan'),
+                                'error': ('error', 'Lỗi')
+                            }
+                            status_info = status_map.get(decl.status.value, ('pending', 'Chưa thông quan'))
+                            
+                            check_results.append(CheckResult(
+                                decl_id=decl.id,
+                                declaration_number=decl.declaration_number,
+                                tax_code=decl.tax_code,
+                                company_name=decl.company_name or "",
+                                status=status_info[0],
+                                status_text=status_info[1]
+                            ))
+                        
+                        # Show results dialog
+                        def show_dialog():
+                            dialog = CheckResultsDialog(
+                                self.root,
+                                total_checked=len(checked_items),
+                                results=check_results,
+                                on_get_barcodes=lambda selected: self._get_barcodes_for_declarations(selected)
+                            )
+                            dialog.show()
+                        
+                        self.root.after(0, show_dialog)
+                        
+                    except Exception as dialog_err:
+                        self.logger.warning(f"Failed to show results dialog: {dialog_err}")
+                        # Fallback to simple message
+                        msg = f"Đã kiểm tra xong.\nSố tờ khai thông quan mới: {count}"
+                        self.root.after(0, lambda: messagebox.showinfo("Hoàn tất kiểm tra", msg))
+                except Exception as e:
+                    if hasattr(self, 'tracking_panel'):
+                        self.root.after(0, self.tracking_panel.hide_progress)
+                    self.root.after(0, lambda: messagebox.showerror("Lỗi", f"Lỗi kiểm tra: {e}"))
+                finally:
+                    if hasattr(self, 'tracking_panel'):
+                        self.root.after(0, self.tracking_panel.disable_stop_btn)
+            
+            import threading
+            threading.Thread(target=run_check, daemon=True).start()
+        else:
+            from tkinter import messagebox
+            messagebox.showwarning("Cảnh báo", "Clearance checker chưa khởi tạo.")
+    
+    def _on_stop_tracking_check(self) -> None:
+        """Handle 'Stop' from Tracking Panel - stop current check."""
+        if hasattr(self, 'clearance_checker') and self.clearance_checker:
+            self.clearance_checker.stop_current_check()
+    
+    def _on_include_pending_changed(self, include: bool) -> None:
+        """Handle include pending checkbox change."""
+        self.logger.debug(f"Include pending: {include}")
+    
+    def _on_exclude_xnktc_changed(self, exclude: bool) -> None:
+        """Handle exclude XNKTC checkbox change."""
+        self.logger.debug(f"Exclude XNKTC: {exclude}")
+
     def _show_settings_dialog(self) -> None:
-        """
-        Show settings dialog for configuring retrieval method, PDF naming, and theme.
-        
-        Implements Requirements 1.1, 5.1, 7.1, 7.5, 7.6
-        """
-        def on_settings_changed(retrieval_method: str, pdf_naming_format: str):
-            """Callback when settings are saved - update components immediately"""
-            # Update BarcodeRetriever's retrieval method
-            if self.barcode_retriever:
-                self.barcode_retriever.set_retrieval_method(retrieval_method)
-                self.logger.info(f"BarcodeRetriever updated with new retrieval method: {retrieval_method}")
+        """Open settings dialog."""
+        try:
+            def on_settings_saved(retrieval_method, pdf_naming_format):
+                """Callback when settings are saved - update clearance checker."""
+                from config.user_preferences import get_preferences
+                prefs = get_preferences()
+                
+                # Update clearance checker with new auto-check settings
+                if hasattr(self, 'clearance_checker'):
+                    self.clearance_checker.set_config(
+                        prefs.auto_check_enabled,
+                        prefs.auto_check_interval
+                    )
+                    self.logger.info(f"Clearance checker updated: enabled={prefs.auto_check_enabled}, interval={prefs.auto_check_interval}m")
+                
+                # Update barcode retriever method
+                if hasattr(self, 'barcode_retriever'):
+                    self.barcode_retriever.retrieval_method = retrieval_method
+                    self.logger.info(f"Barcode retriever method updated: {retrieval_method}")
             
-            # Update FileManager's PDF naming service
-            if self.file_manager:
-                from file_utils.pdf_naming_service import PdfNamingService
-                self.file_manager.pdf_naming_service = PdfNamingService(pdf_naming_format)
-                self.logger.info(f"FileManager updated with new PDF naming format: {pdf_naming_format}")
+            def on_auto_check_changed(enabled: bool, interval: int):
+                """Callback when auto-check settings change - update UI immediately."""
+                # Update tracking panel status label
+                if hasattr(self, 'tracking_panel') and self.tracking_panel:
+                    self.tracking_panel.update_auto_status(enabled)
+                    
+                    if enabled:
+                        # Start/restart countdown and clearance checker
+                        self.tracking_panel.start_countdown(interval)
+                        if hasattr(self, 'clearance_checker') and self.clearance_checker:
+                            self.clearance_checker.set_config(enabled, interval)
+                            self.clearance_checker.start()
+                    else:
+                        # Stop countdown and clearance checker
+                        self.tracking_panel.stop_countdown()
+                        if hasattr(self, 'clearance_checker') and self.clearance_checker:
+                            self.clearance_checker.stop()
+                            
+                self.logger.info(f"Auto-check settings updated: enabled={enabled}, interval={interval}min")
             
-            # Update NotificationManager settings immediately
-            if self.notification_manager:
-                notifications_enabled = self.config_manager.get_notifications_enabled()
-                sound_enabled = self.config_manager.get_sound_enabled()
-                self.notification_manager.set_notifications_enabled(notifications_enabled)
-                self.notification_manager.set_sound_enabled(sound_enabled)
-                self.logger.info(f"NotificationManager updated - notifications: {notifications_enabled}, sound: {sound_enabled}")
+            def on_max_companies_changed(max_companies: int):
+                """Callback when max companies setting changes - update CompanyTagPicker immediately."""
+                # Update CompanyTagPicker in enhanced_manual_panel
+                if hasattr(self, 'enhanced_manual_panel') and self.enhanced_manual_panel:
+                    if hasattr(self.enhanced_manual_panel, 'company_tag_picker'):
+                        self.enhanced_manual_panel.company_tag_picker.set_max_select(max_companies)
+                self.logger.info(f"Max companies setting updated: {max_companies}")
+            
+            # SettingsDialog requires config_manager and auto-shows on init
+            dialog = SettingsDialog(
+                self.root,
+                config_manager=self.config_manager,
+                on_settings_changed=on_settings_saved,
+                theme_manager=self.theme_manager if hasattr(self, 'theme_manager') else None,
+                on_auto_check_changed=on_auto_check_changed,
+                on_max_companies_changed=on_max_companies_changed
+            )
+        except Exception as e:
+            self.logger.error(f"Failed to open settings dialog: {e}")
+            messagebox.showerror("Lỗi", f"Không thể mở cài đặt: {e}")
+
+    def _show_database_config_dialog(self) -> None:
+        """Open database configuration dialog."""
+        try:
+            from gui.dialogs.database_config_dialog import DatabaseConfigDialog
+            dialog = DatabaseConfigDialog(
+                self.root,
+                config_manager=self.config_manager,
+                ecus_connector=self.ecus_connector,
+                logger=self.logger
+            )
+        except Exception as e:
+            self.logger.error(f"Failed to open database config dialog: {e}")
+            messagebox.showerror("Lỗi", f"Không thể mở cấu hình database: {e}")
+
+    def _get_barcodes_for_declarations(self, selected_results) -> None:
+        """
+        Get barcodes for selected cleared declarations from results dialog.
         
-        SettingsDialog(
-            self.root, 
-            self.config_manager, 
-            on_settings_changed=on_settings_changed,
-            theme_manager=self.theme_manager
-        )
+        Args:
+            selected_results: List of CheckResult objects for which to retrieve barcodes
+        """
+        if not selected_results:
+            return
+        
+        try:
+            # Convert CheckResult to declaration data format for barcode retrieval
+            declarations = []
+            for result in selected_results:
+                # Get full tracking data
+                all_tracking = self.tracking_db.get_all_tracking()
+                tracking_decl = next((d for d in all_tracking if d.id == result.decl_id), None)
+                
+                if tracking_decl:
+                    declarations.append({
+                        'tax_code': tracking_decl.tax_code,
+                        'declaration_number': tracking_decl.declaration_number,
+                        'customs_office_code': tracking_decl.customs_code,
+                        'declaration_date': tracking_decl.declaration_date,
+                        'company_name': tracking_decl.company_name
+                    })
+            
+            if declarations:
+                self.logger.info(f"Getting barcodes for {len(declarations)} declarations from results dialog")
+                
+                # Switch to manual panel tab if using tabs
+                if hasattr(self, 'tabs') and hasattr(self.tabs, 'select'):
+                    # Find and select the barcode retrieval tab
+                    pass  # Tab selection depends on implementation
+                
+                # Trigger barcode download via enhanced manual panel
+                if hasattr(self, 'enhanced_manual_panel') and hasattr(self.enhanced_manual_panel, 'download_specific_declarations'):
+                    self.enhanced_manual_panel.download_specific_declarations(declarations)
+                else:
+                    messagebox.showinfo(
+                        "Lấy mã vạch",
+                        f"Đã chọn {len(declarations)} tờ khai để lấy mã vạch.\n\n"
+                        "Vui lòng sử dụng Tab 'Lấy mã vạch' để tải mã vạch."
+                    )
+                    
+        except Exception as e:
+            self.logger.error(f"Failed to get barcodes for declarations: {e}")
+            messagebox.showerror("Lỗi", f"Không thể lấy mã vạch: {e}")

@@ -55,6 +55,14 @@ class WindowStateManager:
         Requirements: 6.1
         """
         try:
+            # Reload config from disk to prevent overwriting changes from other components 
+            # (e.g., UserPreferences which saves in real-time)
+            if hasattr(self.config_manager, '_load_config'):
+                try:
+                    self.config_manager._load_config()
+                except Exception:
+                    pass
+
             # Get current geometry
             geometry = self.root.geometry()
             

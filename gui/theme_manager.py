@@ -184,12 +184,35 @@ class ThemeManager:
         # Save preference to config (Requirement 7.5)
         self.config_manager.set_theme(theme)
         
+        # Force full update of all widgets (Requirement 7.6 - immediate update)
+        self.root.update_idletasks()
+        
+        # Force redraw of all tk.Button widgets by simulating Enter/Leave events
+        self._force_refresh_buttons(self.root)
+        
         # Notify callbacks (Requirement 7.6)
         for callback in self._theme_change_callbacks:
             try:
                 callback(theme)
             except Exception:
                 pass  # Don't let callback errors break theme switching
+    
+    def _force_refresh_buttons(self, widget: tk.Widget) -> None:
+        """Force all tk.Button widgets to refresh their appearance."""
+        try:
+            if widget.winfo_class() == 'Button':
+                # Force redraw by updating the relief
+                current_relief = widget.cget('relief')
+                widget.config(relief=current_relief)
+        except Exception:
+            pass
+        
+        # Recursively refresh children
+        try:
+            for child in widget.winfo_children():
+                self._force_refresh_buttons(child)
+        except Exception:
+            pass
     
     def toggle_theme(self) -> None:
         """

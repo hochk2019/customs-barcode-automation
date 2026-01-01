@@ -1,0 +1,6 @@
+# This directory will contain Excel templates for declaration printing
+# Templates should be placed here:
+# - ToKhaiHQ7X_QDTQ.xlsx (Export clearance template)
+# - ToKhaiHQ7N_QDTQ.xlsx (Import clearance template)
+# - ToKhaiHQ7X_PL.xlsx (Export routing template)  
+# - ToKhaiHQ7N_PL.xlsx (Import routing template)

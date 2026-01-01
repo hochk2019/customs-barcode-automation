@@ -13,7 +13,9 @@ from typing import Optional, Callable, List, Dict, Any
 from datetime import datetime
 
 from gui.styles import ModernStyles
+from gui.components.tooltip import ToolTip, BUTTON_TOOLTIPS
 from models.declaration_models import Declaration
+from config.user_preferences import get_preferences
 
 
 class PreviewPanel(ttk.Frame):
@@ -42,6 +44,8 @@ class PreviewPanel(ttk.Frame):
         on_export_log: Optional[Callable[[], None]] = None,
         on_select_all: Optional[Callable[[bool], None]] = None,
         on_retry_failed: Optional[Callable[[], None]] = None,
+        on_check_clearance: Optional[Callable[[], None]] = None,  # v1.5.0
+        on_add_to_tracking: Optional[Callable[[], None]] = None,  # v1.5.0
         on_include_pending_changed: Optional[Callable[[bool], None]] = None,
         on_exclude_xnktc_changed: Optional[Callable[[bool], None]] = None,
         **kwargs
@@ -58,6 +62,8 @@ class PreviewPanel(ttk.Frame):
             on_export_log: Callback for export log button
             on_select_all: Callback for select all checkbox
             on_retry_failed: Callback for retry failed button
+            on_check_clearance: Callback for check clearance button
+            on_add_to_tracking: Callback for add to tracking button
             on_include_pending_changed: Callback for include pending checkbox
             on_exclude_xnktc_changed: Callback for exclude XNK TC checkbox
             **kwargs: Additional arguments for ttk.Frame
@@ -71,6 +77,8 @@ class PreviewPanel(ttk.Frame):
         self.on_export_log = on_export_log
         self.on_select_all = on_select_all
         self.on_retry_failed = on_retry_failed
+        self.on_check_clearance = on_check_clearance
+        self.on_add_to_tracking = on_add_to_tracking
         self.on_include_pending_changed = on_include_pending_changed
         self.on_exclude_xnktc_changed = on_exclude_xnktc_changed
         
@@ -84,6 +92,9 @@ class PreviewPanel(ttk.Frame):
         
         # Create widgets
         self._create_widgets()
+        
+        # Windows workaround: Force button colors after widget creation
+        self.after_idle(self._force_button_colors)
     
     def _create_widgets(self) -> None:
         """Create preview panel widgets."""
@@ -122,6 +133,7 @@ class PreviewPanel(ttk.Frame):
         )
         self.preview_btn.pack(side=tk.LEFT, padx=(0, btn_padx))
         self._bind_hover_effects(self.preview_btn, 'primary')
+        ToolTip(self.preview_btn, BUTTON_TOOLTIPS.get('preview', 'Xem trước danh sách tờ khai từ database (F5)'), delay=500)
         
         # Download button (success style)
         self.download_btn = tk.Button(
@@ -133,6 +145,23 @@ class PreviewPanel(ttk.Frame):
         )
         self.download_btn.pack(side=tk.LEFT, padx=(0, btn_padx))
         self._bind_hover_effects(self.download_btn, 'success')
+        ToolTip(self.download_btn, BUTTON_TOOLTIPS.get('download', 'Lấy mã vạch cho các tờ khai đã chọn'), delay=500)
+
+        # v1.5.0: Add to Tracking button (secondary/info style)
+        self.add_tracking_btn = tk.Button(
+            action_frame,
+            text="+ Theo dõi",
+            command=self._on_add_to_tracking_click,
+            width=btn_width,
+            **secondary_cfg
+        )
+        self.add_tracking_btn.pack(side=tk.LEFT, padx=(0, btn_padx))
+        self._bind_hover_effects(self.add_tracking_btn, 'secondary')
+        ToolTip(self.add_tracking_btn, BUTTON_TOOLTIPS.get('add_tracking', 'Thêm tờ khai vào danh sách theo dõi thông quan'), delay=500)
+        
+        # v1.5.0: Check Clearance button REMOVED (Issue 3)
+        # Functionality moved to 'Theo dõi thông quan' tab
+
         
         # Cancel button (secondary style)
         self.cancel_btn = tk.Button(
@@ -144,6 +173,7 @@ class PreviewPanel(ttk.Frame):
         )
         self.cancel_btn.pack(side=tk.LEFT, padx=(0, btn_padx))
         self._bind_hover_effects(self.cancel_btn, 'secondary')
+        ToolTip(self.cancel_btn, BUTTON_TOOLTIPS.get('cancel', 'Hủy thao tác xem trước đang thực hiện'), delay=500)
         
         # Stop button (danger style) - starts disabled/sunken
         self.stop_btn = tk.Button(
@@ -155,6 +185,7 @@ class PreviewPanel(ttk.Frame):
         )
         self.stop_btn.pack(side=tk.LEFT, padx=(0, btn_padx))
         self._bind_hover_effects(self.stop_btn, 'danger')
+        ToolTip(self.stop_btn, BUTTON_TOOLTIPS.get('stop', 'Dừng quá trình tải mã vạch (chờ tờ khai hiện tại hoàn tất)'), delay=500)
         # Set initial sunken state
         self._set_button_sunken(self.stop_btn)
         
@@ -168,6 +199,7 @@ class PreviewPanel(ttk.Frame):
         )
         self.export_btn.pack(side=tk.LEFT, padx=(0, btn_padx))
         self._bind_hover_effects(self.export_btn, 'primary')
+        ToolTip(self.export_btn, BUTTON_TOOLTIPS.get('export_log', 'Xuất nhật ký lỗi ra file'), delay=500)
         
         # Retry failed button (warning style) - starts disabled/sunken
         self.retry_btn = tk.Button(
@@ -179,6 +211,7 @@ class PreviewPanel(ttk.Frame):
         )
         self.retry_btn.pack(side=tk.LEFT, padx=(0, btn_padx))
         self._bind_hover_effects(self.retry_btn, 'warning')
+        ToolTip(self.retry_btn, BUTTON_TOOLTIPS.get('retry_failed', 'Thử lại các tờ khai tải thất bại'), delay=500)
         # Set initial sunken state
         self._set_button_sunken(self.retry_btn)
         
@@ -204,7 +237,9 @@ class PreviewPanel(ttk.Frame):
         self.selection_label.pack(side=tk.LEFT, padx=(0, 15))
         
         # Checkbox to include non-cleared declarations (phân luồng nhưng chưa thông quan)
-        self.include_pending_var = tk.BooleanVar(value=False)
+        # v1.5.0: Load from preferences, default=True
+        prefs = get_preferences()
+        self.include_pending_var = tk.BooleanVar(value=prefs.include_pending)
         self.include_pending_checkbox = ttk.Checkbutton(
             filter_frame,
             text="Xem cả tờ khai chưa thông quan",
@@ -214,7 +249,8 @@ class PreviewPanel(ttk.Frame):
         self.include_pending_checkbox.pack(side=tk.LEFT, padx=(0, 10))
         
         # Checkbox to exclude XNK TC declarations (Requirements 1.1, 1.2, 1.5)
-        self.exclude_xnktc_var = tk.BooleanVar(value=True)  # Default: enabled
+        # v1.5.0: Load from preferences, default=False
+        self.exclude_xnktc_var = tk.BooleanVar(value=prefs.exclude_xnktc)
         self.exclude_xnktc_checkbox = ttk.Checkbutton(
             filter_frame,
             text="Không lấy mã vạch tờ khai XNK TC",
@@ -368,6 +404,22 @@ class PreviewPanel(ttk.Frame):
         button._hover_colors = colors
         button._is_sunken = False
     
+    def _force_button_colors(self) -> None:
+        """Force button colors on Windows - workaround for theme override."""
+        button_colors = {
+            self.preview_btn: ModernStyles.PRIMARY_COLOR,
+            self.download_btn: ModernStyles.SUCCESS_COLOR,
+            self.cancel_btn: '#6c757d',  # secondary 
+            self.stop_btn: ModernStyles.ERROR_COLOR,
+            self.export_btn: ModernStyles.PRIMARY_COLOR,
+            self.retry_btn: '#FF9800',  # warning
+        }
+        
+        for btn, color in button_colors.items():
+            if hasattr(btn, '_is_sunken') and not btn._is_sunken:
+                btn.configure(bg=color)
+            btn.update_idletasks()
+    
     def _set_button_sunken(self, button: tk.Button) -> None:
         """
         Set button to sunken/disabled appearance (chìm).
@@ -431,13 +483,31 @@ class PreviewPanel(ttk.Frame):
         if self.on_retry_failed:
             self.on_retry_failed()
     
+    def _on_check_clearance_click(self) -> None:
+        """Handle check clearance button click (v1.5.0)."""
+        if self.on_check_clearance:
+            self.on_check_clearance()
+
+    def _on_add_to_tracking_click(self) -> None:
+        """Handle add to tracking button click (v1.5.0)."""
+        if self.on_add_to_tracking:
+            self.on_add_to_tracking()
+    
     def _on_include_pending_changed(self) -> None:
-        """Handle include pending checkbox change - triggers preview refresh."""
+        """Handle include pending checkbox change - triggers preview refresh and saves preference."""
+        # v1.5.0: Save preference immediately
+        prefs = get_preferences()
+        prefs.include_pending = self.include_pending_var.get()
+        
         if self.on_include_pending_changed:
             self.on_include_pending_changed(self.include_pending_var.get())
     
     def _on_exclude_xnktc_changed(self) -> None:
-        """Handle exclude XNK TC checkbox change - triggers preview refresh."""
+        """Handle exclude XNK TC checkbox change - triggers preview refresh and saves preference."""
+        # v1.5.0: Save preference immediately
+        prefs = get_preferences()
+        prefs.exclude_xnktc = self.exclude_xnktc_var.get()
+        
         if self.on_exclude_xnktc_changed:
             self.on_exclude_xnktc_changed(self.exclude_xnktc_var.get())
     
@@ -544,7 +614,7 @@ class PreviewPanel(ttk.Frame):
                     decl.get('declaration_number', ''),
                     decl.get('tax_code', ''),
                     date_str,
-                    decl.get('status', ''),
+                    decl.get('status', 'Chưa kiểm tra'), # Default status
                     decl.get('declaration_type', ''),
                     decl.get('bill_of_lading', ''),
                     decl.get('invoice_number', ''),
@@ -552,9 +622,63 @@ class PreviewPanel(ttk.Frame):
                 ),
                 tags=(row_tag,)
             )
+            
+    def get_selected_declarations_data(self) -> List[Dict[str, Any]]:
+        """
+        Get data of selected declarations.
+        Returns list of dicts.
+        """
+        selected_data = []
         
-        self._update_selection_count()
-        self.update_status(f"Đã tải {len(declarations)} tờ khai")
+        # Create map for fast lookup
+        if not hasattr(self, '_declarations') or not self._declarations:
+            # Fallback to tree parsing if no source data (shouldn't happen)
+            return []
+            
+        decl_map = {d.get('declaration_number'): d for d in self._declarations}
+        
+        for item_id in self._selected_items:
+            values = self.preview_tree.item(item_id, "values")
+            if not values:
+                continue
+                
+            decl_num = values[1]
+            if decl_num in decl_map:
+                selected_data.append(decl_map[decl_num])
+            else:
+                # Fallback: create minimal dict from tree
+                data = {
+                    'declaration_number': values[1],
+                    'tax_code': values[2],
+                    'date': values[3],
+                    'status': values[4],
+                    'declaration_type': values[5],
+                    # Try to preserve what we can
+                }
+                selected_data.append(data)
+                
+        return selected_data
+
+    def update_item_status(self, declaration_number: str, new_status: str) -> None:
+        """
+        Update status column for a specific declaration.
+        """
+        for item_id in self.preview_tree.get_children():
+            values = self.preview_tree.item(item_id, "values")
+            if values[1] == declaration_number: # decl_num is at index 1
+                # Update status (index 4)
+                new_values = list(values)
+                new_values[4] = new_status
+                
+                # Update status color based on content
+                tags = list(self.preview_tree.item(item_id, "tags"))
+                if "Thông quan" in new_status:
+                     if "cleared" not in tags: tags.append("cleared")
+                elif "Lỗi" in new_status:
+                     if "error" not in tags: tags.append("error")
+                
+                self.preview_tree.item(item_id, values=new_values, tags=tags)
+                break
     
     def get_selected_declarations(self) -> List[str]:
         """
@@ -569,6 +693,32 @@ class PreviewPanel(ttk.Frame):
             if values:
                 selected.append(values[1])  # declaration_number (index 1 after STT)
         return selected
+
+    def get_selected_declarations_data(self) -> List[Dict[str, Any]]:
+        """
+        Get list of selected declaration data dictionaries.
+        
+        Returns:
+            List of dictionaries with declaration data
+        """
+        selected_data = []
+        # Create map for fast lookup if needed, or iterate
+        # self._declarations stores the original data passed to populate_preview
+        
+        if not hasattr(self, '_declarations') or not self._declarations:
+            return []
+            
+        # Map declaration number to data
+        decl_map = {d.get('declaration_number'): d for d in self._declarations}
+        
+        for item in self._selected_items:
+            values = self.preview_tree.item(item, "values")
+            if values:
+                decl_num = values[1]
+                if decl_num in decl_map:
+                    selected_data.append(decl_map[decl_num])
+                    
+        return selected_data
     
     def update_item_result(self, declaration_number: str, result: str, is_success: bool) -> None:
         """

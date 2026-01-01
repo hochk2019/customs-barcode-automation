@@ -1,0 +1,161 @@
+# Implementation Plan
+
+- [ ] 1. Phân tích chi tiết cấu trúc template ECUS
+  - [ ] 1.1 Phân tích template nhập khẩu (ToKhaiHQ7N_QDTQ_107807186540.xlsx)
+    - Xác định ranh giới các trang (page 1: rows 1-75, page 2: rows 76-138, goods pages)
+    - Xác định vị trí tất cả các trường dữ liệu (số TK, MST, tên DN, địa chỉ, v.v.)
+    - Xác định vị trí phần hàng hóa và số dòng mỗi item
+    - Lưu kết quả vào file JSON mapping
+    - _Requirements: 6.1, 6.2, 6.3, 8.1, 8.3_
+  - [ ] 1.2 Phân tích template xuất khẩu (ToKhaiHQ7X_QDTQ_308064365030.xlsx)
+    - Xác định ranh giới các trang (page 1: rows 1-81, subsequent pages: 57 rows each)
+    - Xác định vị trí tất cả các trường dữ liệu
+    - Xác định vị trí phần hàng hóa
+    - Lưu kết quả vào file JSON mapping
+    - _Requirements: 6.4, 8.2, 8.3_
+  - [ ] 1.3 Tạo file JSON mapping cho cả 2 loại template
+    - Tạo file declaration_printing/import_template_mapping.json
+    - Tạo file declaration_printing/export_template_mapping.json
+    - Bao gồm: cell positions, page boundaries, goods section info
+    - _Requirements: 6.5, 8.4, 8.5_
+
+- [ ] 2. Cập nhật DeclarationGenerator để hỗ trợ đầy đủ cả 2 loại tờ khai
+  - [ ] 2.1 Cập nhật hàm _detect_declaration_type()
+    - Kiểm tra số tờ khai bắt đầu bằng "10" → import
+    - Kiểm tra số tờ khai bắt đầu bằng "30" → export
+    - Validate độ dài 12 ký tự
+    - _Requirements: 1.1, 2.1_
+  - [ ] 2.2 Write property test for declaration type detection
+    - **Property 1: Declaration type detection consistency**
+    - **Validates: Requirements 1.1, 2.1**
+  - [ ] 2.3 Cập nhật hàm _get_declaration_from_db()
+    - Query DTOKHAIMD với SOTK
+    - Query DHANGMDDK với SOTK, ORDER BY STTHANG
+    - Trả về tuple (declaration_dict, goods_list)
+    - _Requirements: 1.2, 2.2_
+  - [ ] 2.4 Write property test for database retrieval
+    - **Property 2: Template selection correctness**
+    - **Validates: Requirements 1.3, 2.3**
+
+- [ ] 3. Implement CellMapping class với mapping chi tiết
+  - [ ] 3.1 Tạo file declaration_printing/cell_mapping.py
+    - Load mapping từ JSON files
+    - Cung cấp methods để lấy vị trí các trường
+    - Hỗ trợ cả import và export templates
+    - _Requirements: 1.4, 1.5, 2.4, 2.5_
+  - [ ] 3.2 Implement get_field_positions() method
+    - Trả về list các (row, col) cho một field
+    - Hỗ trợ fields: declaration_number, barcode, tax_code, company_name, etc.
+    - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6_
+  - [ ] 3.3 Write property test for cell mapping
+    - **Property 4: Declaration number replacement completeness**
+    - **Validates: Requirements 1.4, 2.4, 5.1**
+
+- [ ] 4. Implement PageManager class để quản lý số trang
+  - [ ] 4.1 Tạo file declaration_printing/page_manager.py
+    - Implement calculate_required_pages()
+    - Implement get_page_boundaries()
+    - _Requirements: 7.1, 7.2, 8.1, 8.2_
+  - [ ] 4.2 Implement add_goods_page() method
+    - Copy cấu trúc trang từ template (formatting, merged cells, row heights)
+    - Insert rows tại vị trí đúng
+    - _Requirements: 7.3_
+  - [ ] 4.3 Implement remove_goods_page() method
+    - Xóa rows của trang thừa
+    - Cập nhật references
+    - _Requirements: 7.2_
+  - [ ] 4.4 Implement update_page_numbers() method
+    - Cập nhật số trang trên tất cả các trang (1/N, 2/N, ...)
+    - Cập nhật tổng số trang trong header/footer
+    - _Requirements: 7.4, 7.5_
+  - [ ] 4.5 Write property test for page management
+    - **Property 5: Page count adjustment**
+    - **Property 6: Page number consistency**
+    - **Validates: Requirements 7.1, 7.2, 7.4, 7.5**
+
+- [ ] 5. Cập nhật _replace_all_data() để thay thế đầy đủ dữ liệu
+  - [ ] 5.1 Implement thay thế thông tin tờ khai
+    - Số tờ khai tại tất cả vị trí
+    - Barcode (*số_tờ_khai*)
+    - Ngày đăng ký, mã hải quan
+    - _Requirements: 1.4, 2.4, 5.1, 5.2_
+  - [ ] 5.2 Implement thay thế thông tin doanh nghiệp
+    - Mã số thuế, tên công ty, địa chỉ
+    - Mã bưu chính, số điện thoại
+    - _Requirements: 1.5, 5.3, 5.4, 5.5_
+  - [ ] 5.3 Implement thay thế thông tin đối tác
+    - Tên người xuất/nhập khẩu
+    - Địa chỉ, mã nước
+    - _Requirements: 2.5, 5.6_
+  - [ ] 5.4 Implement thay thế thông tin vận chuyển
+    - Số vận đơn, phương tiện vận chuyển
+    - Ngày hàng đến, địa điểm
+    - _Requirements: 1.5, 2.5_
+  - [ ] 5.5 Implement thay thế thông tin hàng hóa
+    - Mã HS, mô tả hàng hóa
+    - Số lượng, đơn vị, đơn giá, trị giá
+    - Nước xuất xứ
+    - _Requirements: 7.6_
+  - [ ] 5.6 Write property test for data replacement
+    - **Property 7: Goods data completeness**
+    - **Validates: Requirements 7.6**
+
+- [ ] 6. Implement DeclarationVerifier class
+  - [ ] 6.1 Tạo file declaration_printing/declaration_verifier.py
+    - Implement verify_structure() method
+    - _Requirements: 4.1_
+  - [ ] 6.2 Implement compare_dimensions()
+    - So sánh max_row, max_column
+    - _Requirements: 4.1_
+  - [ ] 6.3 Implement compare_column_widths()
+    - So sánh độ rộng tất cả các cột
+    - _Requirements: 4.2_
+  - [ ] 6.4 Implement compare_row_heights()
+    - So sánh chiều cao tất cả các hàng
+    - _Requirements: 4.3_
+  - [ ] 6.5 Implement compare_merged_cells()
+    - So sánh tất cả merged cell ranges
+    - _Requirements: 4.4_
+  - [ ] 6.6 Implement generate_report()
+    - Tạo báo cáo pass/fail cho từng check
+    - _Requirements: 4.5_
+  - [ ] 6.7 Write property test for structure verification
+    - **Property 3: Structure preservation**
+    - **Validates: Requirements 3.1, 3.2, 3.3, 3.4**
+
+- [ ] 7. Checkpoint - Ensure all tests pass
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [ ] 8. Integration và testing với database thực
+  - [ ] 8.1 Test với tờ khai nhập khẩu (10...)
+    - Test với tờ khai có 1 item hàng
+    - Test với tờ khai có 3 items hàng
+    - Test với tờ khai có 10+ items hàng
+    - Verify file mở được trong Excel
+    - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5_
+  - [ ] 8.2 Test với tờ khai xuất khẩu (30...)
+    - Test với tờ khai có 1 item hàng
+    - Test với tờ khai có 3 items hàng
+    - Test với tờ khai có 10+ items hàng
+    - Verify file mở được trong Excel
+    - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
+  - [ ] 8.3 Test verification với các file đã tạo
+    - So sánh cấu trúc với template gốc
+    - Verify tất cả checks pass
+    - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 4.1, 4.2, 4.3, 4.4, 4.5_
+
+- [ ] 9. Cập nhật script print_declaration.py
+  - [ ] 9.1 Tích hợp các components mới
+    - Import CellMapping, PageManager, DeclarationVerifier
+    - Cập nhật generate() method
+    - _Requirements: 1.1, 2.1_
+  - [ ] 9.2 Thêm option --goods-test để test với số lượng hàng khác nhau
+    - Cho phép test với mock data
+    - _Requirements: 7.1, 7.2_
+  - [ ] 9.3 Cập nhật documentation và help text
+    - Hướng dẫn sử dụng chi tiết
+    - Ví dụ cho cả import và export
+    - _Requirements: 1.1, 2.1_
+
+- [ ] 10. Final Checkpoint - Ensure all tests pass
+  - Ensure all tests pass, ask the user if questions arise.

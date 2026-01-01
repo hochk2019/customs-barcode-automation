@@ -14,7 +14,7 @@ import os
 import threading
 
 # Application version
-APP_VERSION = "1.3.4"
+APP_VERSION = "1.5.0"
 
 # Import configuration and logging
 from config.configuration_manager import ConfigurationManager, ConfigurationError
@@ -37,36 +37,33 @@ from error_handling.error_handler import ErrorHandler
 # Import GUI
 from gui.customs_gui import CustomsAutomationGUI
 
-
-# Global references for cleanup
-scheduler_instance = None
-ecus_connector_instance = None
-logger_instance = None
+# v2.0: Use Application instance instead of globals
+_app = None
 
 
 def signal_handler(sig, frame):
     """Handle graceful shutdown on CTRL+C"""
     print("\nShutting down gracefully...")
     
-    # Stop scheduler if running
-    if scheduler_instance and scheduler_instance.is_running():
-        print("Stopping scheduler...")
-        scheduler_instance.stop()
-    
-    # Disconnect from database
-    if ecus_connector_instance:
-        print("Closing database connection...")
-        ecus_connector_instance.disconnect()
-    
-    if logger_instance:
-        logger_instance.info("Application shutdown complete")
+    # Use Application instance for cleanup
+    if _app:
+        if _app.scheduler and _app.scheduler.is_running():
+            print("Stopping scheduler...")
+            _app.scheduler.stop()
+        
+        if _app.ecus_connector:
+            print("Closing database connection...")
+            _app.ecus_connector.disconnect()
+        
+        if _app.logger:
+            _app.logger.info("Application shutdown complete")
     
     sys.exit(0)
 
 
 def main():
     """Main application entry point"""
-    global scheduler_instance, ecus_connector_instance, logger_instance
+    global _app
     
     # Register signal handler for graceful shutdown
     signal.signal(signal.SIGINT, signal_handler)

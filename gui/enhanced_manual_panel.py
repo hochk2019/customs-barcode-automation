@@ -8,7 +8,7 @@ and selectively download barcodes.
 
 import tkinter as tk
 from tkinter import ttk, messagebox
-from typing import Optional, List, Callable
+from typing import Optional, List, Callable, Dict, Any
 from datetime import datetime, timedelta
 import threading
 from tkcalendar import DateEntry
@@ -28,6 +28,9 @@ from gui.keyboard_shortcuts import KeyboardShortcutManager
 from processors.batch_limiter import BatchLimiter
 from config.configuration_manager import ConfigurationManager
 from web_utils.parallel_downloader import ParallelDownloader, DownloadResult
+from gui.company_tag_picker import CompanyTagPicker
+from config.user_preferences import get_preferences
+from gui.components.tooltip import ToolTip
 
 
 class EnhancedManualPanel(ttk.Frame):
@@ -118,8 +121,9 @@ class EnhancedManualPanel(ttk.Frame):
         
         # Initialize checkbox variables (needed for both internal and external preview panel)
         # These are used by preview_declarations() regardless of hide_preview_section
-        self.include_pending_var = tk.BooleanVar(value=False)
-        self.exclude_xnktc_var = tk.BooleanVar(value=True)  # Default: enabled
+        prefs = get_preferences()
+        self.include_pending_var = tk.BooleanVar(value=prefs.include_pending)
+        self.exclude_xnktc_var = tk.BooleanVar(value=prefs.exclude_xnktc)
         
         # Apply modern styles (Requirements 4.1, 4.2, 4.3, 4.4)
         self._apply_modern_styles()
@@ -429,6 +433,7 @@ class EnhancedManualPanel(ttk.Frame):
             width=15
         )
         self.scan_button.pack(side=tk.LEFT, padx=(5, 10))
+        ToolTip(self.scan_button, "Quét danh sách công ty từ database ECUS5 để lấy thông tin mã số thuế và tên công ty", delay=500)
         
         # Refresh button with secondary style (Requirement 4.2)
         self.refresh_button = ttk.Button(
@@ -439,6 +444,7 @@ class EnhancedManualPanel(ttk.Frame):
             style='Secondary.TButton'
         )
         self.refresh_button.pack(side=tk.LEFT, padx=5)
+        ToolTip(self.refresh_button, "Tải lại danh sách công ty từ cache đã lưu", delay=500)
         
         # Row 2: Company selection with AutocompleteCombobox (Requirements 4.1, 4.2, 8.1-8.5)
         # Combines search and dropdown into single control
@@ -462,15 +468,25 @@ class EnhancedManualPanel(ttk.Frame):
         )
         self.company_combo.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
         
-        # Clear button - now uses clear_and_reset method
+        # v1.5.0: Add button - adds selected company to tag picker
+        self.add_company_button = ttk.Button(
+            selection_row,
+            text="+ Thêm",
+            command=self._add_company_to_selection,
+            width=8,
+            style='Success.TButton'
+        )
+        self.add_company_button.pack(side=tk.LEFT, padx=5)
+        
+        # Clear button
         self.clear_search_button = ttk.Button(
             selection_row,
             text="Xóa",
             command=self._clear_company_search,
-            width=8,
+            width=6,
             style='Secondary.TButton'
         )
-        self.clear_search_button.pack(side=tk.LEFT, padx=5)
+        self.clear_search_button.pack(side=tk.LEFT, padx=(0, 5))
         
         # Keep company_search_var for backward compatibility
         self.company_search_var = self.company_var
@@ -502,19 +518,26 @@ class EnhancedManualPanel(ttk.Frame):
         # Load recent companies from database
         self._load_recent_companies()
         
+        # v1.5.0: Company Tag Picker - shows selected companies as pills
+        self.company_tag_picker = CompanyTagPicker(
+            company_frame,
+            on_selection_changed=self._on_multi_select_changed
+        )
+        self.company_tag_picker.pack(fill=tk.X, pady=(5, 0))
+        
         # Row 4: Date range row (Requirement 2.1, 2.2 - date row fourth)
         date_row = ttk.Frame(company_frame)
         date_row.pack(fill=tk.X, pady=5)
         
-        # Set default dates (last 2 days)
+        # Set default dates (v1.5.0: changed from 2 days to 1 day)
         today = datetime.now()
-        two_days_ago = today - timedelta(days=2)
+        yesterday = today - timedelta(days=1)
         
         # "Từ ngày" label and picker with consistent alignment
         ttk.Label(date_row, text="Từ ngày", width=10).pack(side=tk.LEFT, padx=5)
         
         self.from_date_var = tk.StringVar()
-        self.from_date_entry = self._create_date_picker(date_row, self.from_date_var, two_days_ago)
+        self.from_date_entry = self._create_date_picker(date_row, self.from_date_var, yesterday)
         self.from_date_entry.pack(side=tk.LEFT, padx=(5, 15))
         
         # "đến ngày" label and picker
@@ -1116,14 +1139,22 @@ class EnhancedManualPanel(ttk.Frame):
                     ))
                     return
                 
-                # Get selected company
+                # v1.5.0: Get selected companies from tag picker (multi-select)
                 tax_codes = None
-                company_selection = self.company_var.get()
-                if company_selection and company_selection != 'Tất cả công ty':
-                    # Extract tax code from selection (format: "TaxCode - Company Name")
-                    if ' - ' in company_selection:
-                        tax_code = company_selection.split(' - ')[0].strip()
-                        tax_codes = [tax_code]
+                if hasattr(self, 'company_tag_picker'):
+                    selected_companies = self.company_tag_picker.get_selected_companies()
+                    if selected_companies:
+                        tax_codes = selected_companies
+                        self._log('info', f"Previewing {len(tax_codes)} selected companies: {tax_codes}")
+                
+                # Fallback to dropdown if no companies selected in tag picker
+                if not tax_codes:
+                    company_selection = self.company_var.get()
+                    if company_selection and company_selection != 'Tất cả công ty':
+                        # Extract tax code from selection (format: "TaxCode - Company Name")
+                        if ' - ' in company_selection:
+                            tax_code = company_selection.split(' - ')[0].strip()
+                            tax_codes = [tax_code]
                 
                 # Get include_pending option
                 include_pending = self.include_pending_var.get()
@@ -1212,10 +1243,154 @@ class EnhancedManualPanel(ttk.Frame):
         thread = threading.Thread(target=preview_in_thread, daemon=True)
         thread.start()
     
-    def download_selected(self) -> None:
-        """Download barcodes for selected declarations"""
+    def download_specific_declarations(self, declarations: List[Dict[str, Any]]) -> None:
+        """
+        Download specific declarations passed from external source (e.g. Tracking Tab).
+        
+        Args:
+            declarations: List of declaration dictionaries
+        """
+        if not declarations:
+            return
+            
+        # Convert dictionaries to objects compatible with download logic
+        # We need Declaration-like objects
+        from models.declaration_models import Declaration
+        
+        target_declarations = []
+        for d in declarations:
+            # Handle key variations
+            decl_num = d.get('declaration_number') or d.get('decl_number')
+            tax_code = d.get('tax_code')
+            
+            # Skip invalid
+            if not decl_num or not tax_code:
+                continue
+                
+            # Create Declaration object (or similar)
+            # We need minimal fields for barcode retrieval: tax_code, declaration_number, customs_code, declaration_date
+            
+            # Parse date
+            decl_date = d.get('date') or d.get('declaration_date')
+            if isinstance(decl_date, str):
+                try:
+                    decl_date = datetime.strptime(decl_date, "%d/%m/%Y")
+                except:
+                    try:
+                        decl_date = datetime.strptime(decl_date, "%Y-%m-%d") 
+                    except:
+                        decl_date = datetime.now()
+            
+            decl_obj = Declaration(
+                declaration_number=decl_num,
+                tax_code=tax_code,
+                declaration_date=decl_date,
+                customs_office_code=d.get('customs_code', '') or d.get('customs_office_code', ''),
+                transport_method="",
+                channel="",
+                status="",
+                goods_description=None,
+                company_name=d.get('company_name', '')
+            )
+            target_declarations.append(decl_obj)
+            
+        if not target_declarations:
+            messagebox.showwarning("Cảnh báo", "Không có dữ liệu hợp lệ để tải.")
+            return
+
+        # Reuse download logic
+        # We need to bypass 'selected_declarations' logic of download_selected
+        # Can we refactor download_selected/download_in_thread to accept list?
+        # download_in_thread is nested inside download_selected.
+        # We should extract the inner logic or copy it.
+        # Given constraints, I'll copy/adapt the logic to run immediately.
+        
+        # Check dependencies
+        if not self.barcode_retriever or not self.file_manager or not self.tracking_db:
+            messagebox.showerror("Lỗi", "Thiếu dependency.")
+            return
+
+        self._update_pdf_naming_service()
+        self.stop_download_flag = False
+        self.clear_session_errors()
+        self._set_state("downloading")
+        
+        if self._external_preview_panel:
+            self._external_preview_panel.set_downloading_state(True)
+            
+        # Run in thread
+        def download_thread():
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            from threading import Lock
+            
+            success = 0
+            error = 0
+            skipped = 0
+            total = len(target_declarations)
+            completed = 0
+            lock = Lock()
+            output_dir = self.output_var.get()
+            
+            self.file_manager.output_directory = output_dir
+
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                futures = []
+                for decl in target_declarations:
+                     # We reuse the process logic. 
+                     # But since process_single_declaration is nested in download_selected,
+                     # we must duplicate it or make it a method.
+                     # For safety and speed now, I'll call barcode_retriever directly here.
+                     futures.append(executor.submit(self._process_single_download, decl, output_dir, lock))
+                     
+                for future in as_completed(futures):
+                    result_type, decl_res = future.result()
+                    completed += 1
+                    
+                    if result_type == 'success':
+                        success += 1
+                    elif result_type == 'skipped':
+                        skipped += 1
+                    else:
+                        error += 1
+                        
+                    # Update progress
+                    progress = (completed / total) * 100
+                    if self._external_preview_panel:
+                        self.after(0, lambda p=progress, c=completed, t=total: 
+                            self._external_preview_panel.update_progress(p, c, t))
+                            
+            # Finish
+            self.after(0, lambda: self._show_download_result_popup(success, error, skipped, total))
+            self.after(0, lambda: self._set_state("ready"))
+            if self._external_preview_panel:
+                self.after(0, lambda: self._external_preview_panel.set_downloading_state(False))
+                
+        import threading
+        t = threading.Thread(target=download_thread, daemon=True)
+        t.start()
+
+    def _process_single_download(self, declaration, output_dir, lock):
+        """Helper for list download"""
         try:
-            # Get selected declarations - sync from external panel if using two-column layout
+            if self.stop_download_flag:
+                return 'skipped', declaration
+                
+            pdf_content = self.barcode_retriever.retrieve_barcode(declaration)
+            if pdf_content:
+                file_path = self.file_manager.save_barcode(declaration, pdf_content, overwrite=True)
+                if file_path:
+                    self.tracking_db.add_processed(declaration, file_path)
+                    try:
+                        self.tracking_db.save_recent_company(declaration.tax_code)
+                    except: pass
+                    return 'success', declaration
+                else:
+                    return 'skipped', declaration
+            else:
+                 return 'error', declaration
+        except Exception:
+            return 'error', declaration
+
             if self._hide_preview_section and self._external_preview_panel:
                 # Get selected declaration numbers from PreviewPanel
                 selected_numbers = self._external_preview_panel.get_selected_declarations()
@@ -1538,7 +1713,8 @@ class EnhancedManualPanel(ttk.Frame):
                 title_frame,
                 text=f"{icon} {title}",
                 font=("Arial", 14, "bold"),
-                fg=title_color
+                fg=title_color,
+                bg="white"
             )
             title_label.pack()
             
@@ -1559,7 +1735,8 @@ class EnhancedManualPanel(ttk.Frame):
                 results_frame,
                 text=results_text,
                 font=("Arial", 11),
-                justify=tk.LEFT
+                justify=tk.LEFT,
+                bg="white"
             )
             results_label.pack()
             
@@ -1571,6 +1748,7 @@ class EnhancedManualPanel(ttk.Frame):
                     text=f"\n📁 Thư mục: {output_path}",
                     font=("Arial", 9),
                     fg="gray",
+                    bg="white",
                     justify=tk.LEFT,
                     wraplength=380
                 )
@@ -2281,15 +2459,49 @@ class EnhancedManualPanel(ttk.Frame):
         except (ValueError, tk.TclError):
             pass
     
+    def _add_company_to_selection(self) -> None:
+        """
+        Add currently selected company from dropdown to tag picker (v1.5.0).
+        
+        Called when user clicks the "+ Thêm" button.
+        """
+        selected = self.company_var.get().strip()
+        
+        if not selected or selected == 'Tất cả công ty':
+            messagebox.showinfo("Thông báo", "Vui lòng chọn một công ty cụ thể để thêm.")
+            return
+        
+        # Add to tag picker
+        if hasattr(self, 'company_tag_picker'):
+            if self.company_tag_picker.add_company(selected):
+                # Successfully added - clear search box
+                self.company_combo.set('')
+                self._log('info', f"Added company to selection: {selected}")
+    
+    def _on_multi_select_changed(self, selected_companies: List[str]) -> None:
+        """
+        Handle multi-select company list change (v1.5.0).
+        
+        Args:
+            selected_companies: List of selected tax codes
+        """
+        self._log('info', f"Multi-select changed: {len(selected_companies)} companies selected")
+        # The selected companies will be used when preview_declarations is called
+        # For now, just log the change
+    
     # Helper Methods
     
     def _populate_company_dropdown(self, companies: List[tuple]) -> None:
         """Populate company dropdown with companies using AutocompleteCombobox"""
         company_list = ['Tất cả công ty']
         
+        # v1.5.0: Extract tax codes for multi-select
+        tax_codes = []
+        
         for tax_code, company_name in companies:
             # Format: "Mã số thuế - Tên Công Ty"
             company_list.append(f"{tax_code} - {company_name}")
+            tax_codes.append(tax_code)
         
         # Store all companies for filtering
         self.all_companies = company_list
@@ -2299,6 +2511,9 @@ class EnhancedManualPanel(ttk.Frame):
         
         # Update AutocompleteCombobox values
         self.company_combo.set_values(company_list)
+        
+        # v1.5.0: CompanyTagPicker manages its own state via preferences
+        # No need to populate - it loads saved selection from preferences
         
         # Keep current selection if still valid
         current = self.company_var.get()
@@ -2449,7 +2664,10 @@ class EnhancedManualPanel(ttk.Frame):
                 'declaration_type': declaration_type,
                 'bill_of_lading': bill_of_lading,
                 'invoice_number': invoice_number,
-                'result': ''
+                'result': '',
+                # Include for Add to Tracking feature
+                'customs_office_code': decl.customs_office_code if hasattr(decl, 'customs_office_code') else '',
+                'company_name': decl.company_name if hasattr(decl, 'company_name') else ''
             })
         
         # If using external preview panel (two-column layout)
@@ -2803,3 +3021,82 @@ class EnhancedManualPanel(ttk.Frame):
         if self._external_preview_panel:
             self._external_preview_panel.update_progress(progress, current, total)
             self._external_preview_panel.update_status(f"Đang xử lý {current}/{total}...")
+        
+    def select_for_retrieval(self, tax_code: str, date: datetime) -> None:
+        """
+        Programmatically set selection for retrieval.
+        
+        Args:
+            tax_code: Tax code to select
+            date: Declaration date
+        """
+        # 1. Update Company Selection
+        if hasattr(self, 'company_tag_picker'):
+            self.company_tag_picker.set_selected_companies([tax_code])
+            
+        # 2. Update Date Range (Date - 1 to Date + 1 to be safe)
+        if date:
+            start_date = date - timedelta(days=1)
+            end_date = date + timedelta(days=1)
+            
+            if hasattr(self, 'from_date_entry'):
+                try:
+                    self.from_date_entry.set_date(start_date)
+                except:
+                    pass
+                    
+            if hasattr(self, 'to_date_entry'):
+                try:
+                    self.to_date_entry.set_date(end_date)
+                except:
+                    pass
+                    
+        # 3. Log
+        self._log('info', f"Prepared retrieval for {tax_code} on {date.strftime('%d/%m/%Y')}")
+    def execute_direct_download(self, declarations_data: List[dict]) -> None:
+        """
+        Execute download directly without manual selection interface (Phase 6).
+        
+        Args:
+            declarations_data: List of dicts with tax_code, declaration_number, date
+        """
+        if not declarations_data:
+            return
+            
+        self._log('info', f"Executing direct download for {len(declarations_data)} items")
+        
+        # 1. Update Preview Manager with these items (mocking a "preview" result)
+        from models.declaration_models import Declaration
+        
+        declarations = []
+        for data in declarations_data:
+            # Create Declaration object
+            decl = Declaration(
+                 declaration_number=data['declaration_number'],
+                 tax_code=data['tax_code'],
+                 declaration_date=data['date'],
+                 status='P' # Pending
+            )
+            declarations.append(decl)
+            
+        self.preview_manager._all_declarations = declarations
+        # Select all by default for this flow
+        self.preview_manager._selected_declarations = {d.id for d in declarations}
+        
+        # 2. Update UI to show these "selected" items in Preview Panel
+        if self._external_preview_panel:
+             # Convert to dict format for populate_preview
+             preview_data = []
+             for d in declarations:
+                 preview_data.append({
+                     'declaration_number': d.declaration_number,
+                     'tax_code': d.tax_code,
+                     'date': d.declaration_date,
+                     'status': 'Ready'
+                 })
+             self._external_preview_panel.populate_preview(preview_data)
+             # Auto-select all visual checkboxes
+             self._external_preview_panel._on_select_all_change() 
+             
+        # 3. Trigger download logic
+        self.download_selected()

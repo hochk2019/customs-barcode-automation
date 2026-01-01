@@ -107,12 +107,16 @@ class CompactStatusBar(ttk.Frame):
         )
         self.db_config_btn.pack(side=tk.LEFT, padx=3)
         
+        from gui.components.tooltip import ToolTip
+        ToolTip(self.db_config_btn, "Cấu hình kết nối database ECUS5 để quét công ty và kiểm tra thông quan", delay=500)
+        
         self.settings_btn = ttk.Button(
             buttons_frame,
             text="⚙ Cài đặt",
             width=12
         )
         self.settings_btn.pack(side=tk.LEFT, padx=3)
+        ToolTip(self.settings_btn, "Mở cài đặt ứng dụng: phương thức lấy mã vạch, tự động kiểm tra, giao diện", delay=500)
     
     def update_status(self, status: str, is_ready: bool = True) -> None:
         """

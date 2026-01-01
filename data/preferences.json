@@ -1,0 +1,21 @@
+{
+  "include_pending": true,
+  "exclude_xnktc": false,
+  "max_companies": 6,
+  "selected_companies": [
+    "2300782217",
+    "0109742786"
+  ],
+  "default_date_days": 1,
+  "auto_check_enabled": true,
+  "auto_check_interval_minutes": 5,
+  "retention_days": 7,
+  "notification_popup": true,
+  "notification_sound": true,
+  "window_geometry": "",
+  "window_maximized": false,
+  "recent_companies": [],
+  "api_timeout_seconds": 10,
+  "tracking_sort_order": "pending_first",
+  "recent_customs_codes": []
+}

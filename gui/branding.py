@@ -15,7 +15,7 @@ def get_app_version():
     except ImportError:
         return "1.3.1"  # Fallback version
 
-APP_VERSION = "1.3.4"  # Keep in sync with main.py
+APP_VERSION = "1.5.0"  # Keep in sync with main.py
 APP_NAME = "Customs Barcode Automation"
 APP_FULL_NAME = f"{APP_NAME} v{APP_VERSION}"
 
@@ -23,11 +23,11 @@ APP_FULL_NAME = f"{APP_NAME} v{APP_VERSION}"
 COMPANY_NAME = "GOLDEN LOGISTICS"
 COMPANY_NAME_FULL = "Golden Logistics Co.,Ltd"
 COMPANY_SLOGAN = "Chuyên làm thủ tục HQ - Vận chuyển hàng toàn quốc"
-COMPANY_MOTTO = '"Thích thì thuê - Không thích thì chê - Nhưng đừng bỏ!"'
+COMPANY_MOTTO = '"Thích thì thuê - Không thích thì chê"'
 
 # Designer Information
 DESIGNER_NAME_HEADER = "Designer: Học HK"  # For header banner only
-DESIGNER_NAME = "Liên hệ để được tư vấn thủ tục hải quan miễn phí - đúng quy định - có lợi nhất cho DN về lâu dài!"  # For footer and about dialog
+DESIGNER_NAME = "Liên hệ để được tư vấn thủ tục hải quan miễn phí - đúng quy định - có lợi nhất cho DN"  # For footer and about dialog
 DESIGNER_EMAIL = "Hochk2019@gmail.com"
 DESIGNER_PHONE = "0868.333.606"
 

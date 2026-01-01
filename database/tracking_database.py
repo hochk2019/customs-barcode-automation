@@ -7,9 +7,9 @@ to prevent duplicate processing and support re-download functionality.
 
 import sqlite3
 import os
-from typing import Set, List, Optional
-from datetime import datetime
-from models.declaration_models import Declaration, ProcessedDeclaration
+from typing import Set, List, Optional, Any
+from datetime import datetime, timedelta
+from models.declaration_models import Declaration, ProcessedDeclaration, TrackingDeclaration, ClearanceStatus
 from logging_system.logger import Logger
 
 
@@ -26,8 +26,22 @@ class TrackingDatabase:
         """
         self.db_path = db_path
         self.logger = logger
+        self._busy_timeout = 30  # v2.0: 30 second busy timeout
         self._ensure_directory_exists()
         self._initialize_database()
+    
+    def _get_connection(self) -> sqlite3.Connection:
+        """
+        Get SQLite connection with busy timeout.
+        
+        v2.0: Added busy timeout to prevent lock errors.
+        
+        Returns:
+            sqlite3.Connection with timeout configured
+        """
+        conn = sqlite3.connect(self.db_path, timeout=self._busy_timeout)
+        conn.execute(f"PRAGMA busy_timeout = {self._busy_timeout * 1000}")  # milliseconds
+        return conn
     
     def _ensure_directory_exists(self) -> None:
         """Create database directory if it doesn't exist"""
@@ -84,6 +98,36 @@ class TrackingDatabase:
             
             conn.commit()
             
+            # Create tracking_declarations table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS tracking_declarations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    tax_code TEXT NOT NULL,
+                    declaration_number TEXT NOT NULL,
+                    customs_code TEXT,
+                    declaration_date TEXT,
+                    company_name TEXT,
+                    status TEXT DEFAULT 'pending',
+                    last_checked TEXT,
+                    cleared_at TEXT,
+                    added_at TEXT NOT NULL,
+                    notified INTEGER DEFAULT 0,
+                    UNIQUE(declaration_number)
+                )
+            ''')
+            
+            # Create check_history table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS check_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    declaration_id INTEGER NOT NULL,
+                    checked_at TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    response_data TEXT,
+                    FOREIGN KEY (declaration_id) REFERENCES tracking_declarations(id)
+                )
+            ''')
+
             if self.logger:
                 self.logger.info("Tracking database initialized successfully")
                 
@@ -93,7 +137,205 @@ class TrackingDatabase:
             raise
         finally:
             conn.close()
+            
+    def cleanup_old_records(self, retention_days: int) -> int:
+        """
+        Delete cleared/processed declarations older than retention days.
+        
+        Args:
+            retention_days: Number of days to keep data
+            
+        Returns:
+            Number of records deleted
+        """
+        if retention_days < 1:
+            return 0
+            
+        conn = sqlite3.connect(self.db_path)
+        try:
+            cursor = conn.cursor()
+            
+            # Calculate cutoff date
+            cutoff_date = datetime.now() - timedelta(days=retention_days)
+            cutoff_str = cutoff_date.strftime("%Y-%m-%d %H:%M:%S")
+            
+            # Delete from check_history first (FK constraint usually, but good practice)
+            cursor.execute("""
+                DELETE FROM check_history 
+                WHERE declaration_id IN (
+                    SELECT id FROM tracking_declarations 
+                    WHERE (status = 'cleared' OR status = 'error') 
+                    AND cleared_at < ?
+                )
+            """, (cutoff_str,))
+            
+            # This query is tricky because we don't have 'updated_at' index in tracking_declarations
+            # But we have 'cleared_at'. Let's use cleared_at for cleared items.
+            # For pending items, we usually don't delete them unless they are very old?
+            # Requirement says "Retention: Keep tracking data...". 
+            # Usually implies completed items. Pending items should probably stay until cleared or manually deleted.
+            # Let's delete ONLY cleared items explicitly.
+            
+            cursor.execute("""
+                DELETE FROM tracking_declarations
+                WHERE status = 'cleared' 
+                AND cleared_at IS NOT NULL 
+                AND cleared_at < ?
+            """, (cutoff_str,))
+            
+            deleted_count = cursor.rowcount
+            conn.commit()
+            
+            if self.logger and deleted_count > 0:
+                self.logger.info(f"Cleaned up {deleted_count} old tracking records (older than {retention_days} days)")
+                
+            return deleted_count
+            
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Failed to cleanup old records: {e}")
+            return 0
+        finally:
+            conn.close()
+            
+    def get_pending_declarations(self) -> List[TrackingDeclaration]:
+        """
+        Get all declarations with 'pending' status.
+        
+        Returns:
+            List of TrackingDeclaration objects
+        """
+        conn = sqlite3.connect(self.db_path)
+        try:
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT id, tax_code, declaration_number, customs_code, 
+                       declaration_date, company_name, status, last_checked, 
+                       cleared_at, added_at, notified
+                FROM tracking_declarations
+                WHERE status = 'pending'
+            """)
+            
+            declarations = []
+            for row in cursor.fetchall():
+                declarations.append(TrackingDeclaration(
+                    id=row[0],
+                    tax_code=row[1],
+                    declaration_number=row[2],
+                    customs_code=row[3],
+                    declaration_date=row[4],
+                    company_name=row[5],
+                    status=row[6],
+                    last_checked=row[7],
+                    cleared_at=row[8],
+                    added_at=row[9],
+                    notified=bool(row[10])
+                ))
+            
+            return declarations
+            
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Failed to get pending declarations: {e}", exc_info=True)
+            return []
+        finally:
+            conn.close()
     
+    def add_to_tracking(self, declaration_number: str, tax_code: str, declaration_date: Any, 
+                       company_name: str = "", customs_code: str = "") -> bool:
+        """
+        Add a declaration to tracking.
+        
+        Args:
+            declaration_number: Declaration number
+            tax_code: Tax code
+            declaration_date: Declaration date (string or datetime)
+            company_name: Company name
+            customs_code: Customs office code
+            
+        Returns:
+            True if added, False if duplicate or failed
+        """
+        conn = sqlite3.connect(self.db_path)
+        try:
+            cursor = conn.cursor()
+            
+            # Format date
+            date_str = ""
+            if isinstance(declaration_date, datetime):
+                # We want just the date part for display usually, but DB stores as TEXT.
+                # Let's standardize on YYYY-MM-DD for sorting/filtering consistency
+                date_str = declaration_date.strftime("%Y-%m-%d")
+            elif isinstance(declaration_date, str):
+                date_str = declaration_date
+            
+            # Check if exists
+            cursor.execute("SELECT id FROM tracking_declarations WHERE declaration_number = ?", (declaration_number,))
+            if cursor.fetchone():
+                if self.logger:
+                    self.logger.info(f"Declaration {declaration_number} already in tracking.")
+                return False
+            
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            cursor.execute("""
+                INSERT INTO tracking_declarations (
+                    tax_code, declaration_number, customs_code, 
+                    declaration_date, company_name, status, 
+                    last_checked, added_at, notified
+                ) VALUES (?, ?, ?, ?, ?, 'pending', NULL, ?, 0)
+            """, (
+                tax_code, declaration_number, customs_code, 
+                date_str, company_name, now
+            ))
+            
+            conn.commit()
+            return True
+            
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Failed to add to tracking: {e}", exc_info=True)
+            raise # Let caller handle exception if needed, or return False? 
+                  # Caller in customs_gui catches exception.
+        finally:
+            conn.close()
+
+    def delete_by_id(self, tracking_id: int) -> bool:
+        """
+        Delete a tracking declaration by its ID.
+        
+        Args:
+            tracking_id: The ID of the tracking declaration to delete
+            
+        Returns:
+            True if deleted successfully, False otherwise
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            
+            # First delete from check_history (foreign key constraint)
+            cursor.execute("DELETE FROM check_history WHERE declaration_id = ?", (tracking_id,))
+            
+            # Then delete from tracking_declarations
+            cursor.execute("DELETE FROM tracking_declarations WHERE id = ?", (tracking_id,))
+            
+            deleted = cursor.rowcount > 0
+            conn.commit()
+            
+            if self.logger and deleted:
+                self.logger.info(f"Deleted tracking declaration id={tracking_id}")
+                
+            return deleted
+            
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Failed to delete tracking id={tracking_id}: {e}")
+            return False
+        finally:
+            conn.close()
+
     def add_processed(self, declaration: Declaration, file_path: str) -> None:
         """
         Add a processed declaration to the tracking database
@@ -599,3 +841,223 @@ class TrackingDatabase:
             raise
         finally:
             conn.close()
+
+    # =========================================================================
+    # Tracking Methods (v1.5.0)
+    # =========================================================================
+
+    def add_declaration(
+        self,
+        tax_code: str,
+        declaration_number: str,
+        customs_code: str = "",
+        declaration_date: str = "",
+        company_name: str = ""
+    ) -> Optional[int]:
+        """
+        Add a declaration to track.
+        
+        Args:
+            tax_code: Company tax code
+            declaration_number: Declaration number
+            customs_code: Customs office code
+            declaration_date: Declaration date
+            company_name: Company name
+            
+        Returns:
+            ID of inserted row, or None if already exists
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                INSERT INTO tracking_declarations 
+                (tax_code, declaration_number, customs_code, declaration_date, 
+                 company_name, status, added_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                tax_code,
+                declaration_number,
+                customs_code,
+                declaration_date,
+                company_name,
+                ClearanceStatus.PENDING.value,
+                datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            ))
+            conn.commit()
+            
+            # Also save company if new
+            if company_name:
+                self.add_or_update_company(tax_code, company_name)
+                
+            return cursor.lastrowid
+        except sqlite3.IntegrityError:
+            # Already exists
+            return None
+        finally:
+            conn.close()
+    
+    def get_all_tracking(self) -> List[TrackingDeclaration]:
+        """
+        Get all tracked declarations.
+        
+        Returns:
+            List of TrackingDeclaration objects
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                SELECT id, tax_code, declaration_number, customs_code, 
+                       declaration_date, company_name, status, last_checked,
+                       cleared_at, added_at, notified
+                FROM tracking_declarations
+                ORDER BY added_at DESC
+            ''')
+            
+            results = []
+            for row in cursor.fetchall():
+                results.append(TrackingDeclaration(
+                    id=row[0],
+                    tax_code=row[1],
+                    declaration_number=row[2],
+                    customs_code=row[3] or "",
+                    declaration_date=row[4] or "",
+                    company_name=row[5] or "",
+                    status=ClearanceStatus(row[6]) if row[6] else ClearanceStatus.PENDING,
+                    last_checked=datetime.strptime(row[7], '%Y-%m-%d %H:%M:%S') if row[7] else None,
+                    cleared_at=datetime.strptime(row[8], '%Y-%m-%d %H:%M:%S') if row[8] else None,
+                    added_at=datetime.strptime(row[9], '%Y-%m-%d %H:%M:%S'),
+                    notified=bool(row[10])
+                ))
+            return results
+        finally:
+            conn.close()
+    
+    def get_pending_declarations(self) -> List[TrackingDeclaration]:
+        """
+        Get all pending (not yet cleared) declarations.
+        
+        Returns:
+            List of pending TrackingDeclaration objects
+        """
+        all_tracking = self.get_all_tracking()
+        return [d for d in all_tracking if d.status == ClearanceStatus.PENDING]
+    
+    def update_status(
+        self,
+        declaration_id: int,
+        status: ClearanceStatus,
+        response_data: str = None
+    ) -> None:
+        """
+        Update declaration status.
+        
+        Args:
+            declaration_id: ID of declaration to update
+            status: New status
+            response_data: Optional response data from check
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            
+            # Update declaration
+            if status in (ClearanceStatus.CLEARED, ClearanceStatus.TRANSFER):
+                cursor.execute('''
+                    UPDATE tracking_declarations
+                    SET status = ?, last_checked = ?, cleared_at = ?
+                    WHERE id = ?
+                ''', (status.value, now, now, declaration_id))
+            else:
+                cursor.execute('''
+                    UPDATE tracking_declarations
+                    SET status = ?, last_checked = ?
+                    WHERE id = ?
+                ''', (status.value, now, declaration_id))
+            
+            # Record history
+            cursor.execute('''
+                INSERT INTO check_history (declaration_id, checked_at, status, response_data)
+                VALUES (?, ?, ?, ?)
+            ''', (declaration_id, now, status.value, response_data))
+            
+            conn.commit()
+        finally:
+            conn.close()
+    
+    def mark_notified(self, declaration_id: int) -> None:
+        """Mark a declaration as notified."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                UPDATE tracking_declarations
+                SET notified = 1
+                WHERE id = ?
+            ''', (declaration_id,))
+            conn.commit()
+        finally:
+            conn.close()
+    
+    def delete_declaration(self, declaration_id: int) -> None:
+        """Delete a tracked declaration."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('DELETE FROM check_history WHERE declaration_id = ?', (declaration_id,))
+            cursor.execute('DELETE FROM tracking_declarations WHERE id = ?', (declaration_id,))
+            conn.commit()
+        finally:
+            conn.close()
+    
+    def cleanup_old_entries(self, retention_days: int = 7) -> int:
+        """
+        Remove entries older than retention period.
+        
+        Args:
+            retention_days: Number of days to keep (1-10)
+            
+        Returns:
+            Number of entries deleted
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            cutoff = (datetime.now() - timedelta(days=retention_days)).strftime('%Y-%m-%d %H:%M:%S')
+            
+            # Get IDs to delete
+            cursor.execute('''
+                SELECT id FROM tracking_declarations
+                WHERE added_at < ? AND status = 'cleared'
+            ''', (cutoff,))
+            
+            ids_to_delete = [row[0] for row in cursor.fetchall()]
+            
+            if ids_to_delete:
+                # Delete history first
+                placeholders = ','.join('?' * len(ids_to_delete))
+                cursor.execute(f'DELETE FROM check_history WHERE declaration_id IN ({placeholders})', ids_to_delete)
+                cursor.execute(f'DELETE FROM tracking_declarations WHERE id IN ({placeholders})', ids_to_delete)
+            
+            conn.commit()
+            return len(ids_to_delete)
+        finally:
+            conn.close()
+    
+    def get_unnotified_cleared(self) -> List[TrackingDeclaration]:
+        """
+        Get declarations that are cleared but not yet notified.
+        
+        Returns:
+            List of unnotified cleared declarations
+        """
+        all_tracking = self.get_all_tracking()
+        return [d for d in all_tracking if d.status == ClearanceStatus.CLEARED and not d.notified]

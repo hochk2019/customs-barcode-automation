@@ -1,5 +1,92 @@
 # Changelog
 
+## [1.5.0] - 2026-01-01
+
+### ✨ New Features
+
+#### 1. Theo dõi thông quan tự động
+- **Trạng thái Tự động BẬT/TẮT**: Hiển thị trạng thái tự động kiểm tra thông quan ngay trên toolbar
+- **Cập nhật ngay lập tức**: Khi thay đổi trong Cài đặt, trạng thái cập nhật ngay không cần khởi động lại
+- **Countdown timer**: Hiển thị thời gian còn lại đến lần kiểm tra tiếp theo
+- **Sắp xếp danh sách**: Dropdown sắp xếp theo nhiều tiêu chí (Chờ thông quan trước, Ngày mới/cũ, Công ty)
+
+#### 2. Ghi nhớ Mã Hải quan gần đây
+- **Dropdown Mã HQ**: Trong popup "Thêm TK thủ công", mã hải quan giờ là Combobox với dropdown
+- **Ghi nhớ 10 mã gần nhất**: Tự động lưu mã HQ khi thêm tờ khai mới
+- **Ưu tiên mã gần nhất**: Mã HQ được dùng gần nhất hiển thị đầu tiên
+
+#### 3. Cài đặt "Số công ty tối đa"
+- **Spinbox mới trong Cài đặt**: Cho phép chọn từ 1-15 công ty
+- **Cập nhật ngay lập tức**: Thay đổi có hiệu lực ngay sau khi Lưu
+- **Mặc định 5 công ty**: Giá trị mặc định phù hợp với đa số người dùng
+
+#### 4. Tooltips hướng dẫn sử dụng
+- **Panel trái**: Quét công ty, Làm mới, Cấu hình DB, Xóa tất cả, Cài đặt
+- **Tab Theo dõi thông quan**: Làm mới, Thêm TK thủ công
+- **Delay 0.5s**: Tooltip xuất hiện sau 0.5 giây di chuột qua nút
+
+### 🎨 UI/UX Improvements
+
+#### 1. Sửa đổi Branding
+- **Slogan header**: Rút gọn từ "Thích thì thuê - Không thích thì chê - Nhưng đừng bỏ!" thành "Thích thì thuê - Không thích thì chê"
+- **Footer text**: Rút gọn từ "...có lợi nhất cho DN về lâu dài!" thành "...có lợi nhất cho DN"
+- **Đồng bộ**: About dialog sử dụng chung text với footer
+
+#### 2. Visual Feedback cho nút Làm mới
+- **Log output**: In số lượng tờ khai sau khi làm mới
+- **Hiệu ứng**: Style thay đổi tạm thời khi đang làm mới
+
+### 🔧 Technical Improvements
+
+#### 1. Callback System cải tiến
+- **on_auto_check_changed**: Callback khi thay đổi cài đặt tự động kiểm tra
+- **on_max_companies_changed**: Callback khi thay đổi số công ty tối đa
+- **Constructor injection**: Tất cả callback được truyền vào constructor thay vì gán sau
+
+#### 2. Preferences mới
+- **recent_customs_codes**: Danh sách mã HQ gần đây (max 10)
+- **max_companies**: Số công ty tối đa (1-15, default 5)
+- **auto_check_interval_minutes**: Đổi default từ 10 → 6 phút
+- **retention_days**: Đổi default từ 30 → 5 ngày
+
+### 🐛 Bug Fixes
+
+#### 1. Fixed: Trạng thái Tự động không cập nhật ngay
+- **Vấn đề**: Khi thay đổi trong Cài đặt, cần khởi động lại để thấy thay đổi
+- **Nguyên nhân**: Có 2 function `_show_settings_dialog` trùng tên, chỉ 1 được wired callback
+- **Giải pháp**: Thêm callback vào cả 2 function
+
+#### 2. Fixed: Xóa tờ khai không đúng
+- **Vấn đề**: Nút Xóa xóa dựa trên highlight thay vì checkbox
+- **Giải pháp**: Đọc giá trị checkbox (☑/☐) thay vì tree.selection()
+
+#### 3. Fixed: Countdown không reset
+- **Vấn đề**: Countdown kẹt ở "Đang kiểm tra..." khi không có tờ khai pending
+- **Giải pháp**: Gọi on_status_changed() cả khi pending_list rỗng
+
+### 📁 Files Changed
+
+**Modified:**
+- `gui/branding.py` - Sửa COMPANY_MOTTO và DESIGNER_NAME
+- `gui/components/header_banner.py` - Sửa motto_lines
+- `gui/settings_dialog.py` - Thêm max_companies spinbox, callback parameter
+- `gui/customs_gui.py` - Wire callbacks cho settings dialog
+- `gui/tracking_panel.py` - Thêm auto_status_label, tooltips, refresh feedback
+- `gui/add_tracking_dialog.py` - Đổi customs_entry sang Combobox với recent codes
+- `gui/enhanced_manual_panel.py` - Thêm tooltips
+- `gui/compact_status_bar.py` - Thêm tooltips
+- `gui/company_tag_picker.py` - Thêm tooltip, sửa max_companies
+- `gui/clearance_checker.py` - Gọi callback khi pending_list rỗng
+- `config/preferences_service.py` - Thêm recent_customs_codes, sửa defaults
+- `database/tracking_database.py` - Thêm delete_by_id method
+
+**Added:**
+- `tests/test_auto_status_update.py` - Test callback flow cho auto status
+- `tests/test_countdown_timer.py` - Test countdown timer behavior
+- `tests/test_max_companies_setting.py` - Test max companies setting
+
+---
+
 ## [1.3.4] - 2024-12-16
 
 ### 🔄 Code Formatting & Maintenance

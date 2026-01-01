@@ -3,6 +3,8 @@ ECUS5 Database Connector
 
 This module handles all interactions with the ECUS5 SQL Server database,
 including connection management and declaration data extraction.
+
+v2.0: Refactored to use ConnectionPool for thread-safe access.
 """
 
 import pyodbc
@@ -13,6 +15,7 @@ import time
 from models.config_models import DatabaseConfig
 from models.declaration_models import Declaration
 from logging_system.logger import Logger
+from database.connection_pool import ConnectionPool, get_connection_pool
 
 
 class DatabaseConnectionError(Exception):
@@ -33,20 +36,78 @@ class EcusDataConnector:
         """
         self.config = config
         self.logger = logger
+        
+        # v2.0: Use connection pool instead of single connection
+        self._pool: Optional[ConnectionPool] = None
+        
+        # Legacy: kept for backwards compatibility
         self._connection: Optional[pyodbc.Connection] = None
         self._last_connection_attempt: Optional[datetime] = None
         self._reconnect_delay = 30  # seconds
+        
+        # Initialize security components for logging sensitive data
+        self._sensitive_patterns = [
+            (r'\b\d{10,12}\b', '[DECLARATION_NUMBER]'),
+            (r'\b\d{10,13}\b', '[TAX_CODE]'),
+        ]
     
     def _log(self, level: str, message: str, **kwargs) -> None:
-        """Helper method to log messages if logger is available"""
+        """Helper method to log messages if logger is available with sensitive data protection"""
         if self.logger:
+            # Sanitize message to protect sensitive data
+            sanitized_message = self._sanitize_for_logging(message)
             log_method = getattr(self.logger, level, None)
             if log_method:
-                log_method(message, **kwargs)
+                log_method(sanitized_message, **kwargs)
+    
+    def _sanitize_for_logging(self, message: str) -> str:
+        """Sanitize log messages to protect sensitive data"""
+        import re
+        sanitized = message
+        for pattern, replacement in self._sensitive_patterns:
+            sanitized = re.sub(pattern, replacement, sanitized, flags=re.IGNORECASE)
+        return sanitized
+    
+    def _validate_sql_parameter(self, parameter) -> any:
+        """Validate SQL parameters to prevent injection attacks"""
+        if parameter is None:
+            return None
+        
+        param_str = str(parameter)
+        
+        # Check for basic SQL injection patterns
+        dangerous_patterns = [
+            r'(\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|EXECUTE)\b)',
+            r'(--|#|/\*|\*/)',
+            r'(\bxp_cmdshell\b)',
+            r'(\bsp_executesql\b)',
+        ]
+        
+        import re
+        for pattern in dangerous_patterns:
+            if re.search(pattern, param_str, re.IGNORECASE):
+                self._log('error', f"Potential SQL injection detected in parameter")
+                raise ValueError(f"Invalid parameter detected: potential SQL injection")
+        
+        # For string parameters, limit length and remove dangerous characters
+        if isinstance(parameter, str):
+            # Remove null bytes and control characters
+            sanitized = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', param_str)
+            
+            # Limit length to prevent buffer overflow
+            if len(sanitized) > 1000:
+                sanitized = sanitized[:1000]
+                self._log('warning', f"Parameter truncated from {len(param_str)} to {len(sanitized)} characters")
+            
+            return sanitized
+        
+        return parameter
     
     def connect(self) -> bool:
         """
-        Establish connection to ECUS5 database
+        Establish connection to ECUS5 database.
+        
+        v2.0: Initializes connection pool instead of single connection.
         
         Returns:
             True if connection successful, False otherwise
@@ -54,12 +115,18 @@ class EcusDataConnector:
         try:
             self._log('info', f"Connecting to database: {self.config.server}/{self.config.database}")
             
-            connection_string = self.config.connection_string
-            self._connection = pyodbc.connect(connection_string)
-            self._last_connection_attempt = datetime.now()
+            # Initialize pool if not exists
+            if self._pool is None:
+                self._pool = ConnectionPool(self.config, self.logger)
             
-            self._log('info', "Database connection established successfully")
-            return True
+            # Test connection
+            if self._pool.test_connection():
+                self._last_connection_attempt = datetime.now()
+                self._log('info', "Database connection established successfully")
+                return True
+            else:
+                self._log('error', "Failed to establish database connection")
+                return False
             
         except pyodbc.Error as e:
             self._last_connection_attempt = datetime.now()
@@ -67,19 +134,19 @@ class EcusDataConnector:
             return False
     
     def disconnect(self) -> None:
-        """Close database connection"""
-        if self._connection:
+        """Close database connection for current thread."""
+        if self._pool:
             try:
-                self._connection.close()
+                self._pool.close_thread_connection()
                 self._log('info', "Database connection closed")
             except Exception as e:
                 self._log('warning', f"Error closing database connection: {e}")
-            finally:
-                self._connection = None
     
     def reconnect(self) -> bool:
         """
-        Attempt to reconnect to the database
+        Attempt to reconnect to the database.
+        
+        v2.0: Pool handles reconnection automatically.
         
         Returns:
             True if reconnection successful, False otherwise
@@ -98,21 +165,27 @@ class EcusDataConnector:
     
     def test_connection(self) -> bool:
         """
-        Test if database connection is active
+        Test if database connection is active.
         
         Returns:
             True if connection is active, False otherwise
         """
-        if not self._connection:
-            return False
+        if self._pool:
+            return self._pool.test_connection()
+        return False
+    
+    def get_connection(self) -> pyodbc.Connection:
+        """
+        Get a connection from the pool for current thread.
         
-        try:
-            cursor = self._connection.cursor()
-            cursor.execute("SELECT 1")
-            cursor.close()
-            return True
-        except pyodbc.Error:
-            return False
+        v2.0: Returns thread-safe connection from pool.
+        
+        Returns:
+            pyodbc.Connection for current thread
+        """
+        if self._pool is None:
+            self.connect()
+        return self._pool.get_connection()
     
     def _ensure_connection(self) -> None:
         """
@@ -143,7 +216,7 @@ class EcusDataConnector:
         self._ensure_connection()
         
         try:
-            cursor = self._connection.cursor()
+            cursor = self.get_connection().cursor()
             
             # Build SQL query with DISTINCT to prevent duplicates
             # Use subquery with ROW_NUMBER to select one record per unique declaration
@@ -175,7 +248,8 @@ class EcusDataConnector:
                     declaration_type,
                     bill_of_lading,
                     invoice_number,
-                    so_hstk
+                    so_hstk,
+                    company_name
                 FROM (
                     SELECT 
                         tk.SOTK as declaration_number,
@@ -191,6 +265,7 @@ class EcusDataConnector:
                         tk.VAN_DON as bill_of_lading,
                         tk.SO_HDTM as invoice_number,
                         tk.SoHSTK as so_hstk,
+                        tk._Ten_DV_L1 as company_name,
                         ROW_NUMBER() OVER (
                             PARTITION BY tk.SOTK, tk.MA_DV, tk.NGAY_DK, tk.MA_HQ 
                             ORDER BY tk._DToKhaiMDID
@@ -201,12 +276,14 @@ class EcusDataConnector:
                         AND {status_filter}
             """
             
-            # Add tax code filter if provided
-            params = [from_date, to_date]
+            # Add tax code filter if provided with parameter validation
+            params = [self._validate_sql_parameter(from_date), self._validate_sql_parameter(to_date)]
             if tax_codes and len(tax_codes) > 0:
-                placeholders = ','.join(['?' for _ in tax_codes])
+                # Validate each tax code parameter
+                validated_tax_codes = [self._validate_sql_parameter(tc) for tc in tax_codes]
+                placeholders = ','.join(['?' for _ in validated_tax_codes])
                 query += f" AND tk.MA_DV IN ({placeholders})"
-                params.extend(tax_codes)
+                params.extend(validated_tax_codes)
             
             query += """
                 ) AS ranked
@@ -273,12 +350,14 @@ class EcusDataConnector:
                     AND (tk.PLUONG = 'Xanh' OR tk.PLUONG = 'Vang')
             """
             
-            # Add tax code filter if provided
-            params = [-days_back]
+            # Add tax code filter if provided with parameter validation
+            params = [self._validate_sql_parameter(-days_back)]
             if tax_codes and len(tax_codes) > 0:
-                placeholders = ','.join(['?' for _ in tax_codes])
+                # Validate each tax code parameter
+                validated_tax_codes = [self._validate_sql_parameter(tc) for tc in tax_codes]
+                placeholders = ','.join(['?' for _ in validated_tax_codes])
                 query += f" AND tk.MA_DV IN ({placeholders})"
-                params.extend(tax_codes)
+                params.extend(validated_tax_codes)
             
             query += " ORDER BY tk.NGAY_DK DESC"
             
@@ -321,7 +400,13 @@ class EcusDataConnector:
         self._ensure_connection()
         
         try:
-            cursor = self._connection.cursor()
+            # Use connection pool instead of legacy _connection
+            conn = self._pool.get_connection() if self._pool else None
+            if not conn:
+                self._log('error', "No database connection available")
+                return []
+            
+            cursor = conn.cursor()
             
             # Query to get unique tax codes and company names from recent declarations
             # Company name is stored in _Ten_DV_L1 column in DTOKHAIMD table
@@ -337,7 +422,8 @@ class EcusDataConnector:
             """
             
             self._log('debug', f"Scanning companies from last {days_back} days")
-            cursor.execute(query, (-days_back,))
+            validated_days_back = self._validate_sql_parameter(-days_back)
+            cursor.execute(query, (validated_days_back,))
             
             companies = []
             for row in cursor:
@@ -378,7 +464,8 @@ class EcusDataConnector:
                 WHERE MA_SO_THUE = ?
             """
             
-            cursor.execute(query, (tax_code,))
+            validated_tax_code = self._validate_sql_parameter(tax_code)
+            cursor.execute(query, (validated_tax_code,))
             row = cursor.fetchone()
             cursor.close()
             
@@ -438,15 +525,88 @@ class EcusDataConnector:
             status=str(row.status).strip() if row.status else "",
             goods_description=str(row.goods_description).strip() if row.goods_description else None,
             status_name=status_name,
+            company_name=str(row.company_name).strip() if hasattr(row, 'company_name') and row.company_name else None,
             declaration_type=str(row.declaration_type).strip() if hasattr(row, 'declaration_type') and row.declaration_type else None,
             bill_of_lading=str(row.bill_of_lading).strip() if hasattr(row, 'bill_of_lading') and row.bill_of_lading else None,
             invoice_number=str(row.invoice_number).strip() if hasattr(row, 'invoice_number') and row.invoice_number else None,
             so_hstk=str(row.so_hstk).strip() if hasattr(row, 'so_hstk') and row.so_hstk else None
         )
+        
+    def check_declarations_status(self, declarations: List[tuple]) -> List[Declaration]:
+        """
+        Check status for a list of declarations.
+        
+        Args:
+            declarations: List of tuples (tax_code, declaration_number)
+            
+        Returns:
+            List of Declaration objects with current status
+        """
+        if not declarations:
+            return []
+            
+        self._ensure_connection()
+        
+        try:
+            cursor = self.get_connection().cursor()
+            
+            # Use temporary table or multiple OR conditions for querying
+            conditions = []
+            params = []
+            
+            for tax_code, decl_num in declarations:
+                conditions.append("(tk.MA_DV = ? AND tk.SOTK = ?)")
+                params.append(self._validate_sql_parameter(tax_code))
+                params.append(self._validate_sql_parameter(decl_num))
+            
+            where_clause = " OR ".join(conditions)
+            
+            query = f"""
+                SELECT 
+                    tk.SOTK as declaration_number,
+                    tk.MA_DV as tax_code,
+                    tk.NGAY_DK as declaration_date,
+                    tk.MA_HQ as customs_office_code,
+                    tk.MA_PTVT as transport_method,
+                    tk.PLUONG as channel,
+                    tk.TTTK as status,
+                    hh.TEN_HANG as goods_description,
+                    tk.TTTK_HQ as status_name,
+                    tk.MA_LH as declaration_type,
+                    tk.VAN_DON as bill_of_lading,
+                    tk.SO_HDTM as invoice_number,
+                    tk.SoHSTK as so_hstk,
+                    tk._Ten_DV_L1 as company_name
+                FROM DTOKHAIMD tk
+                LEFT JOIN DHANGMDDK hh ON tk._DToKhaiMDID = hh._DToKhaiMDID
+                WHERE {where_clause}
+            """
+            
+            self._log('debug', f"Checking status for {len(declarations)} declarations")
+            cursor.execute(query, params)
+            
+            results = []
+            seen_ids = set()
+            
+            for row in cursor:
+                decl = self._map_row_to_declaration(row)
+                
+                # Deduplicate based on combined key
+                key = f"{decl.tax_code}_{decl.declaration_number}"
+                if key not in seen_ids:
+                    results.append(decl)
+                    seen_ids.add(key)
+            
+            cursor.close()
+            return results
+            
+        except Exception as e:
+            self._log('error', f"Failed to check declaration status: {e}", exc_info=True)
+            return []
     
     def __enter__(self):
         """Context manager entry"""
-        self.connect()
+        self._ensure_connection()
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):

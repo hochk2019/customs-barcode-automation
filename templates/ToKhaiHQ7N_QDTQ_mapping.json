@@ -1,0 +1,16 @@
+{
+  "declaration_number": "B5",
+  "declaration_date": "C5",
+  "company_name": "B10",
+  "company_tax_code": "B11",
+  "company_address": "B12",
+  "partner_name": "B15",
+  "partner_address": "B16",
+  "country_of_origin": "B18",
+  "total_value": "F20",
+  "currency": "G20",
+  "total_weight": "H20",
+  "total_packages": "I20",
+  "transport_method": "B22",
+  "bill_of_lading": "C22"
+}

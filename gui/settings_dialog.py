@@ -58,7 +58,9 @@ class SettingsDialog:
     
     def __init__(self, parent: tk.Tk, config_manager: ConfigurationManager, 
                  on_settings_changed: Optional[callable] = None,
-                 theme_manager: Optional['ThemeManager'] = None):
+                 theme_manager: Optional['ThemeManager'] = None,
+                 on_auto_check_changed: Optional[callable] = None,
+                 on_max_companies_changed: Optional[callable] = None):
         """
         Initialize Settings dialog.
         
@@ -68,6 +70,10 @@ class SettingsDialog:
             on_settings_changed: Optional callback function called when settings are saved.
                                  Receives (retrieval_method: str, pdf_naming_format: str) as arguments.
             theme_manager: Optional ThemeManager instance for theme switching
+            on_auto_check_changed: Optional callback when auto-check setting changes.
+                                   Receives (enabled: bool, interval: int) as arguments.
+            on_max_companies_changed: Optional callback when max companies setting changes.
+                                      Receives (max_companies: int) as argument.
         """
         self.parent = parent
         self.config_manager = config_manager
@@ -87,6 +93,12 @@ class SettingsDialog:
         # Callback for recent companies count change
         self.on_recent_companies_changed: Optional[callable] = None
         
+        # Callback for auto-check setting change (must be set BEFORE _create_dialog)
+        self.on_auto_check_changed: Optional[callable] = on_auto_check_changed
+        
+        # Callback for max companies setting change
+        self.on_max_companies_changed: Optional[callable] = on_max_companies_changed
+        
         # Create and show dialog
         self._create_dialog()
     
@@ -95,7 +107,7 @@ class SettingsDialog:
         # Create dialog window
         self.dialog = tk.Toplevel(self.parent)
         self.dialog.title("Cài đặt")
-        self.dialog.geometry("520x650")  # Increased height for recent companies section
+        self.dialog.geometry("520x580")
         self.dialog.resizable(False, False)
         self.dialog.transient(self.parent)
         self.dialog.grab_set()
@@ -107,46 +119,68 @@ class SettingsDialog:
         y = self.parent.winfo_y() + (self.parent.winfo_height() - self.dialog.winfo_height()) // 2
         self.dialog.geometry(f"+{x}+{y}")
         
-        # Main frame with glossy black background
-        main_frame = tk.Frame(self.dialog, bg=BRAND_PRIMARY_COLOR)
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=25, pady=20)
+        # Container frame
+        container = tk.Frame(self.dialog, bg=BRAND_PRIMARY_COLOR)
+        container.pack(fill=tk.BOTH, expand=True, padx=20, pady=15)
         
-        # Title
+        # ========== STEP 1: BUTTONS AT BOTTOM - PACK FIRST ==========
+        button_frame = tk.Frame(container, bg=BRAND_PRIMARY_COLOR)
+        button_frame.pack(side=tk.BOTTOM, fill=tk.X)
+        
+        # Gold separator above buttons
+        tk.Frame(button_frame, bg=BRAND_GOLD_COLOR, height=2).pack(fill=tk.X, pady=(0, 10))
+        
+        # Buttons
+        self._create_buttons(button_frame)
+        
+        # ========== STEP 2: TITLE AT TOP - PACK SECOND ==========
+        title_frame = tk.Frame(container, bg=BRAND_PRIMARY_COLOR)
+        title_frame.pack(side=tk.TOP, fill=tk.X)
+        
         title_label = tk.Label(
-            main_frame,
+            title_frame,
             text="⚙ Cài đặt",
             font=("Segoe UI", 16, "bold"),
             fg=BRAND_GOLD_COLOR,
             bg=BRAND_PRIMARY_COLOR
         )
-        title_label.pack(anchor=tk.W, pady=(0, 15))
+        title_label.pack(anchor=tk.W, pady=(0, 10))
         
-        # Gold separator
-        tk.Frame(main_frame, bg=BRAND_GOLD_COLOR, height=2).pack(fill=tk.X, pady=(0, 15))
+        # Gold separator below title
+        tk.Frame(title_frame, bg=BRAND_GOLD_COLOR, height=2).pack(fill=tk.X, pady=(0, 10))
         
-        # Create retrieval method section
-        self._create_retrieval_method_section(main_frame)
+        # ========== STEP 3: SCROLLABLE CONTENT - PACK LAST ==========
+        content_container = tk.Frame(container, bg=BRAND_PRIMARY_COLOR)
+        content_container.pack(fill=tk.BOTH, expand=True)
         
-        # Create PDF naming section
-        self._create_pdf_naming_section(main_frame)
+        canvas = tk.Canvas(content_container, bg=BRAND_PRIMARY_COLOR, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(content_container, orient=tk.VERTICAL, command=canvas.yview)
+        content_frame = tk.Frame(canvas, bg=BRAND_PRIMARY_COLOR)
         
-        # Create theme section (Requirements 7.1, 7.5, 7.6)
-        self._create_theme_section(main_frame)
+        content_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
         
-        # Create notification settings section (Requirements 2.3, 2.4, 2.6)
-        self._create_notification_section(main_frame)
+        canvas.create_window((0, 0), window=content_frame, anchor="nw", width=465)
+        canvas.configure(yscrollcommand=scrollbar.set)
         
-        # Create batch limit section (Requirements 10.3)
-        self._create_batch_limit_section(main_frame)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
-        # Create recent companies count section (Requirements 6.1, 6.2)
-        self._create_recent_companies_section(main_frame)
+        # Bind mousewheel
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        canvas.bind("<MouseWheel>", _on_mousewheel)
+        content_frame.bind("<MouseWheel>", _on_mousewheel)
         
-        # Gold separator before buttons
-        tk.Frame(main_frame, bg=BRAND_GOLD_COLOR, height=2).pack(fill=tk.X, pady=(15, 15))
-        
-        # Create button section
-        self._create_buttons(main_frame)
+        # Create all setting sections in content_frame
+        self._create_retrieval_method_section(content_frame)
+        self._create_pdf_naming_section(content_frame)
+        self._create_theme_section(content_frame)
+        self._create_tracking_section(content_frame)
+        self._create_notification_section(content_frame)
+        self._create_batch_limit_section(content_frame)
         
         # Bind Escape key to close
         self.dialog.bind('<Escape>', lambda e: self.dialog.destroy())
@@ -330,6 +364,142 @@ class SettingsDialog:
             selectcolor=BRAND_SECONDARY_COLOR
         )
         sound_cb.pack(anchor=tk.W, pady=2)
+        
+    def _create_tracking_section(self, parent: tk.Frame) -> None:
+        """
+        Create tracking settings section.
+        
+        Phase 4: Auto-check interval
+        
+        Args:
+            parent: Parent frame
+        """
+        from config.user_preferences import get_preferences
+        prefs = get_preferences()
+        
+        # Section label
+        label = tk.Label(
+            parent,
+            text="Tự động theo dõi:",
+            font=("Segoe UI", 11),
+            fg=BRAND_TEXT_COLOR,
+            bg=BRAND_PRIMARY_COLOR
+        )
+        label.pack(anchor=tk.W, pady=(10, 5))
+        
+        # Frame
+        frame = tk.Frame(parent, bg=BRAND_PRIMARY_COLOR)
+        frame.pack(anchor=tk.W, pady=(0, 10))
+        
+        # Auto check toggle
+        self.auto_check_var = tk.BooleanVar(value=prefs.auto_check_enabled)
+        auto_check_cb = tk.Checkbutton(
+            frame,
+            text="Tự động kiểm tra trạng thái thông quan",
+            variable=self.auto_check_var,
+            font=("Segoe UI", 10),
+            fg=BRAND_TEXT_COLOR,
+            bg=BRAND_PRIMARY_COLOR,
+            activebackground=BRAND_PRIMARY_COLOR,
+            activeforeground=BRAND_TEXT_COLOR,
+            selectcolor=BRAND_SECONDARY_COLOR,
+            command=self._toggle_interval_state
+        )
+        auto_check_cb.pack(anchor=tk.W)
+        
+        # Interval spinner
+        interval_frame = tk.Frame(frame, bg=BRAND_PRIMARY_COLOR)
+        interval_frame.pack(anchor=tk.W, padx=(20, 0), pady=(5, 0))
+        
+        tk.Label(
+            interval_frame,
+            text="Chu kỳ kiểm tra (phút):",
+            font=("Segoe UI", 10),
+            fg=BRAND_TEXT_COLOR,
+            bg=BRAND_PRIMARY_COLOR
+        ).pack(side=tk.LEFT)
+        
+        self.interval_var = tk.IntVar(value=prefs.auto_check_interval)
+        self.interval_spinbox = ttk.Spinbox(
+            interval_frame,
+            from_=5,
+            to=120,
+            textvariable=self.interval_var,
+            width=5,
+            font=("Segoe UI", 10)
+        )
+        self.interval_spinbox.pack(side=tk.LEFT, padx=(5, 0))
+        
+        # Retention days setting
+        retention_frame = tk.Frame(frame, bg=BRAND_PRIMARY_COLOR)
+        retention_frame.pack(anchor=tk.W, padx=(20, 0), pady=(10, 0))
+        
+        tk.Label(
+            retention_frame,
+            text="Số ngày lưu trữ tờ khai đã thông quan:",
+            font=("Segoe UI", 10),
+            fg=BRAND_TEXT_COLOR,
+            bg=BRAND_PRIMARY_COLOR
+        ).pack(side=tk.LEFT)
+        
+        self.retention_var = tk.IntVar(value=prefs.retention_days)
+        self.retention_spinbox = ttk.Spinbox(
+            retention_frame,
+            from_=1,
+            to=365,
+            textvariable=self.retention_var,
+            width=5,
+            font=("Segoe UI", 10)
+        )
+        self.retention_spinbox.pack(side=tk.LEFT, padx=(5, 0))
+        
+        tk.Label(
+            retention_frame,
+            text="ngày",
+            font=("Segoe UI", 10),
+            fg=BRAND_TEXT_COLOR,
+            bg=BRAND_PRIMARY_COLOR
+        ).pack(side=tk.LEFT, padx=(3, 0))
+        
+        # Max companies setting
+        max_companies_frame = tk.Frame(frame, bg=BRAND_PRIMARY_COLOR)
+        max_companies_frame.pack(anchor=tk.W, padx=(20, 0), pady=(10, 0))
+        
+        tk.Label(
+            max_companies_frame,
+            text="Số công ty tối đa được chọn:",
+            font=("Segoe UI", 10),
+            fg=BRAND_TEXT_COLOR,
+            bg=BRAND_PRIMARY_COLOR
+        ).pack(side=tk.LEFT)
+        
+        self.max_companies_var = tk.IntVar(value=prefs.max_companies)
+        self.max_companies_spinbox = ttk.Spinbox(
+            max_companies_frame,
+            from_=1,
+            to=15,
+            textvariable=self.max_companies_var,
+            width=5,
+            font=("Segoe UI", 10)
+        )
+        self.max_companies_spinbox.pack(side=tk.LEFT, padx=(5, 0))
+        
+        tk.Label(
+            max_companies_frame,
+            text="công ty",
+            font=("Segoe UI", 10),
+            fg=BRAND_TEXT_COLOR,
+            bg=BRAND_PRIMARY_COLOR
+        ).pack(side=tk.LEFT, padx=(3, 0))
+        
+        # Initial state
+        self._toggle_interval_state()
+        
+    def _toggle_interval_state(self) -> None:
+        """Enable/disable interval spinbox based on checkbox."""
+        if hasattr(self, 'interval_spinbox'):
+            state = 'normal' if self.auto_check_var.get() else 'disabled'
+            self.interval_spinbox.configure(state=state)
     
     def _create_batch_limit_section(self, parent: tk.Frame) -> None:
         """
@@ -499,6 +669,15 @@ class SettingsDialog:
     def save_settings(self) -> None:
         """Save all settings to config.ini and notify listeners."""
         try:
+            # Load preferences manager
+            from config.user_preferences import get_preferences
+            prefs = get_preferences()
+            
+            # Save tracking settings (Phase 4)
+            if hasattr(self, 'auto_check_var'):
+                prefs.auto_check_enabled = self.auto_check_var.get()
+                prefs.auto_check_interval = self.interval_var.get()
+                
             # Get selected values as config keys
             retrieval_method = self._get_retrieval_method_key()
             pdf_naming_format = self._get_pdf_naming_key()
@@ -518,6 +697,10 @@ class SettingsDialog:
             # Clamp to valid range
             recent_companies_count = max(3, min(10, recent_companies_count))
             
+            # Get retention days setting
+            retention_days = self.retention_var.get() if hasattr(self, 'retention_var') else 30
+            retention_days = max(1, min(365, retention_days))
+            
             # Save to config manager
             self.config_manager.set_retrieval_method(retrieval_method)
             self.config_manager.set_pdf_naming_format(pdf_naming_format)
@@ -527,8 +710,37 @@ class SettingsDialog:
             self.config_manager.set_batch_limit(batch_limit)
             self.config_manager.set_recent_companies_count(recent_companies_count)
             
+            # Save retention days to preferences
+            from config.user_preferences import get_preferences
+            prefs = get_preferences()
+            prefs.retention_days = retention_days
+            
+            # Save auto-check settings to preferences
+            auto_check_enabled = self.auto_check_var.get() if hasattr(self, 'auto_check_var') else True
+            auto_check_interval = self.interval_var.get() if hasattr(self, 'interval_var') else 10
+            prefs.auto_check_enabled = auto_check_enabled
+            prefs.auto_check_interval = auto_check_interval
+            
+            # Save max companies setting
+            max_companies = self.max_companies_var.get() if hasattr(self, 'max_companies_var') else 5
+            prefs.max_companies = max_companies
+            
             # Persist to file
             self.config_manager.save()
+            
+            # Notify tracking panel about auto-check setting change
+            if self.on_auto_check_changed:
+                try:
+                    self.on_auto_check_changed(auto_check_enabled, auto_check_interval)
+                except Exception as callback_error:
+                    print(f"Warning: Auto-check callback failed: {callback_error}")
+            
+            # Notify about max companies change
+            if self.on_max_companies_changed:
+                try:
+                    self.on_max_companies_changed(max_companies)
+                except Exception as callback_error:
+                    print(f"Warning: Max companies callback failed: {callback_error}")
             
             # Apply theme immediately if theme_manager is available (Requirement 7.6)
             if self.theme_manager:

@@ -23,6 +23,12 @@ pytest-cov>=4.1.0
 # Additional utilities
 python-dateutil>=2.8.2
 
+# Excel file manipulation for declaration printing
+openpyxl>=3.1.0
+
+# XML parsing for declaration data
+lxml>=4.9.0
+
 # Calendar widget for date picking
 tkcalendar>=1.6.1
 
