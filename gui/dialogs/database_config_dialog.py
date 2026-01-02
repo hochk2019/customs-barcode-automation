@@ -12,6 +12,7 @@ from typing import Callable, Optional, Dict, Any
 from config.configuration_manager import ConfigurationManager
 from database.ecus_connector import EcusDataConnector
 from logging_system.logger import Logger
+from models.config_models import DatabaseProfile
 
 
 class DatabaseConfigDialog:
@@ -196,11 +197,13 @@ class DatabaseConfigDialog:
         ttk.Button(btn_frame, text="Đóng", command=self.dialog.destroy).pack(side=tk.RIGHT, padx=5)
     
     def _get_profiles(self) -> list:
-        """Get list of saved profiles."""
+        """Get list of saved profile names."""
         try:
-            return list(self.config_manager.get_database_profiles().keys())
+            profiles = self.config_manager.get_database_profiles()
+            # get_database_profiles returns list of DatabaseProfile objects
+            return [p.name for p in profiles] if profiles else []
         except:
-            return ["Default"]
+            return []
     
     def _load_current_config(self) -> None:
         """Load current configuration into form."""
@@ -224,22 +227,26 @@ class DatabaseConfigDialog:
         if profile_name:
             profile = self.config_manager.get_database_profile(profile_name)
             if profile:
-                self.server_var.set(profile.get('server', ''))
-                self.database_var.set(profile.get('database', ''))
-                self.username_var.set(profile.get('username', ''))
-                self.password_var.set(profile.get('password', ''))
+                # profile is a DatabaseProfile object
+                self.server_var.set(profile.server or '')
+                self.database_var.set(profile.database or '')
+                self.username_var.set(profile.username or '')
+                self.password_var.set(profile.password or '')
     
     def _save_new_profile(self) -> None:
         """Save current settings as new profile."""
         name = simpledialog.askstring("Tên hồ sơ", "Nhập tên hồ sơ mới:", parent=self.dialog)
         if name:
-            profile = {
-                'server': self.server_var.get(),
-                'database': self.database_var.get(),
-                'username': self.username_var.get(),
-                'password': self.password_var.get()
-            }
-            self.config_manager.save_database_profile(name, profile)
+            # Create DatabaseProfile object (required by ConfigurationManager)
+            profile = DatabaseProfile(
+                name=name,
+                server=self.server_var.get(),
+                database=self.database_var.get(),
+                username=self.username_var.get(),
+                password=self.password_var.get(),
+                timeout=30
+            )
+            self.config_manager.save_database_profile(profile)
             self.profile_combo['values'] = self._get_profiles()
             self.profile_var.set(name)
             messagebox.showinfo("Thành công", f"Đã lưu hồ sơ '{name}'")

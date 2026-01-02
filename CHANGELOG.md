@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.5.1] - 2026-01-02
+
+### 🐛 Bug Fixes
+
+#### 1. Fixed: Lưu Profile Database không hoạt động
+- **Vấn đề**: Khi tạo Profile mới trong Cấu hình DB, ấn Lưu mới nhưng profile không được lưu
+- **Nguyên nhân**: Hàm gọi `save_database_profile(name, dict)` nhưng method chỉ nhận `DatabaseProfile` object
+- **Giải pháp**: Sửa `database_config_dialog.py` để tạo `DatabaseProfile` object đúng cách
+
+#### 2. Fixed: Mất cấu hình Database sau khi Update
+- **Vấn đề**: Khi user update lên phiên bản mới, thông tin database (server, username, password) bị mất
+- **Nguyên nhân**: Script update không xử lý đúng cấu trúc ZIP nested và không backup đủ file user
+- **Giải pháp**: 
+  - Sửa script extract ZIP vào thư mục tạm trước, xử lý cấu trúc nested
+  - Thêm backup/restore cho `preferences.json` và thư mục `data`
+
+### 📁 Files Changed
+
+- `gui/dialogs/database_config_dialog.py` - Fix profile save using DatabaseProfile object
+- `update/download_manager.py` - Fix update script to handle nested ZIP and preserve more user files
+
+---
+
 ## [1.5.0] - 2026-01-01
 
 ### ✨ New Features

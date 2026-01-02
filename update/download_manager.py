@@ -293,10 +293,13 @@ set "BACKUP_DIR=%TEMP%\\customs_backup_%RANDOM%"
 mkdir "%BACKUP_DIR%" 2>nul
 if exist "{target_dir}\\config.ini" copy /Y "{target_dir}\\config.ini" "%BACKUP_DIR%\\config.ini" >nul
 if exist "{target_dir}\\.encryption_key" copy /Y "{target_dir}\\.encryption_key" "%BACKUP_DIR%\\.encryption_key" >nul
+if exist "{target_dir}\\preferences.json" copy /Y "{target_dir}\\preferences.json" "%BACKUP_DIR%\\preferences.json" >nul
+if exist "{target_dir}\\data" xcopy /E /I /Y "{target_dir}\\data" "%BACKUP_DIR%\\data" >nul 2>&1
 
-REM Extract ZIP to target directory (overwrite existing files)
+REM Extract ZIP to temp directory first (handle nested structure)
 echo Đang giải nén bản cập nhật...
-powershell -Command "Expand-Archive -Path '{zip_path}' -DestinationPath '{target_dir}' -Force"
+set "TEMP_EXTRACT=%TEMP%\\customs_extract_%RANDOM%"
+powershell -Command "Expand-Archive -Path '{zip_path}' -DestinationPath '%TEMP_EXTRACT%' -Force"
 
 if %ERRORLEVEL% NEQ 0 (
     echo Lỗi: Không thể giải nén file cập nhật!
@@ -304,10 +307,28 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
-REM Restore user configuration files (don't overwrite with defaults)
+REM Check if ZIP has nested folder structure and copy files to target
+echo Đang cài đặt bản cập nhật...
+REM If there's a subfolder (e.g., CustomsAutomation), copy from there
+for /d %%D in ("%TEMP_EXTRACT%\\*") do (
+    if exist "%%D\\{exe_name}" (
+        xcopy /E /Y "%%D\\*" "{target_dir}\\" >nul
+        goto :done_copy
+    )
+)
+REM Otherwise copy directly
+xcopy /E /Y "%TEMP_EXTRACT%\\*" "{target_dir}\\" >nul
+:done_copy
+
+REM Clean up temp extract
+rmdir /s /q "%TEMP_EXTRACT%" 2>nul
+
+REM Restore user configuration files (don't overwrite with defaults from ZIP)
 echo Đang khôi phục cấu hình...
 if exist "%BACKUP_DIR%\\config.ini" copy /Y "%BACKUP_DIR%\\config.ini" "{target_dir}\\config.ini" >nul
 if exist "%BACKUP_DIR%\\.encryption_key" copy /Y "%BACKUP_DIR%\\.encryption_key" "{target_dir}\\.encryption_key" >nul
+if exist "%BACKUP_DIR%\\preferences.json" copy /Y "%BACKUP_DIR%\\preferences.json" "{target_dir}\\preferences.json" >nul
+if exist "%BACKUP_DIR%\\data" xcopy /E /I /Y "%BACKUP_DIR%\\data" "{target_dir}\\data" >nul 2>&1
 
 REM Clean up backup
 rmdir /s /q "%BACKUP_DIR%" 2>nul
