@@ -178,7 +178,7 @@ class HeaderBanner:
         # Version label
         tk.Label(
             right_frame,
-            text=f"Version {APP_VERSION}",
+            text=f"Version v{APP_VERSION}",
             font=("Segoe UI", 9),
             fg=BRAND_ACCENT_COLOR,
             bg=BRAND_PRIMARY_COLOR
