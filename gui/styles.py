@@ -518,8 +518,16 @@ class ModernStyles:
         treeview.tag_configure('info', background=info_bg, foreground=info_fg)
         
         # Result column tags
-        treeview.tag_configure('success_result', foreground=success_fg, font=('Segoe UI', 12, 'bold'))
-        treeview.tag_configure('error_result', foreground=error_fg, font=('Segoe UI', 12, 'bold'))
+        treeview.tag_configure(
+            'success_result',
+            foreground=success_fg,
+            font=(cls.FONT_FAMILY, cls.FONT_SIZE_NORMAL, 'bold')
+        )
+        treeview.tag_configure(
+            'error_result',
+            foreground=error_fg,
+            font=(cls.FONT_FAMILY, cls.FONT_SIZE_NORMAL, 'bold')
+        )
     
     @classmethod
     def get_button_config(cls, button_type: str = 'primary', theme: str = 'light') -> Dict[str, Any]:

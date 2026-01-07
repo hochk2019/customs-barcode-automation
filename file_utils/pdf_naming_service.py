@@ -172,11 +172,11 @@ class PdfNamingService:
                 f"All naming fields are empty for declaration {declaration_number}, "
                 f"using declaration number only"
             )
-            filename = f"{declaration_number}.pdf"
+            filename = f"MV_{declaration_number}.pdf"
         else:
             # Sanitize prefix
             prefix = self._sanitize_filename_part(prefix)
-            filename = f"{prefix}_{declaration_number}.pdf"
+            filename = f"MV_{prefix}_{declaration_number}.pdf"
         
         logger.debug(f"Generated filename: {filename} (format: {self.naming_format})")
         return filename

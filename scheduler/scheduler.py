@@ -188,6 +188,9 @@ class Scheduler:
         result.start_time = datetime.now()
         result.total_fetched = len(declarations)
         result.total_eligible = len(declarations)
+
+        if self.barcode_retriever and hasattr(self.barcode_retriever, 'reset_method_skip_list'):
+            self.barcode_retriever.reset_method_skip_list()
         
         for declaration in declarations:
             try:
@@ -286,6 +289,9 @@ class Scheduler:
             eligible = self.processor.filter_declarations(declarations)
             result.total_eligible = len(eligible)
             self.logger.info(f"{result.total_eligible} declarations are eligible for processing")
+
+            if self.barcode_retriever and hasattr(self.barcode_retriever, 'reset_method_skip_list'):
+                self.barcode_retriever.reset_method_skip_list()
             
             if progress_callback:
                 progress_callback(f"Đang xử lý {result.total_eligible} tờ khai hợp lệ...", 30, 100)

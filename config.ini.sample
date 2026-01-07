@@ -4,6 +4,8 @@ database = ECUS5VNACCS
 username = sa
 password = 1
 timeout = 30
+# Optional active profile name (matches entry in [DatabaseProfiles])
+active_profile =
 
 [BarcodeService]
 # API endpoint for barcode service (V2.0: port 8086 is internal, use without port)
@@ -89,6 +91,13 @@ window_y = -1
 window_width = 1100
 window_height = 680
 
+# Layout tuning
+# Left panel ratio (0.25-0.50, default 0.38)
+panel_split_position = 0.38
+
+# Recent companies count (3-10, default 5)
+recent_companies_count = 5
+
 [Logging]
 log_level = INFO
 log_file = logs/app.log
@@ -109,5 +118,20 @@ pending_installer =
 # Last update check timestamp (set automatically)
 last_check = 
 
+# Last run version (set automatically after update)
+last_run_version =
+
 # Check interval in hours (0 = every startup)
 check_interval = 24
+
+[ECUS5]
+# Used by DB Config dialog (kept in sync with [Database] on save)
+server = localhost
+database = ECUS5VNACCS
+username = sa
+password = 1
+driver = SQL Server
+
+[DatabaseProfiles]
+# Optional: pipe-separated list of saved profiles (e.g., Server|Branch2)
+profiles =

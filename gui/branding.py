@@ -5,17 +5,12 @@ This module contains all branding, version, and company information
 for the Customs Barcode Automation application.
 """
 
-# Version Information - Import from main.py to keep single source of truth
-# Note: This is imported at runtime to avoid circular imports
-def get_app_version():
-    """Get app version from main module."""
-    try:
-        from main import APP_VERSION as MAIN_VERSION
-        return MAIN_VERSION
-    except ImportError:
-        return "1.3.1"  # Fallback version
+# Version Information - Single source of truth
+from core.version import APP_VERSION
 
-APP_VERSION = "1.5.1"  # Keep in sync with main.py
+def get_app_version():
+    """Get app version from shared version module."""
+    return APP_VERSION
 APP_NAME = "Customs Barcode Automation"
 APP_FULL_NAME = f"{APP_NAME} v{APP_VERSION}"
 

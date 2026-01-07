@@ -1243,6 +1243,66 @@ class EnhancedManualPanel(ttk.Frame):
         thread = threading.Thread(target=preview_in_thread, daemon=True)
         thread.start()
     
+    def download_selected(self) -> None:
+        """Download selected declarations from preview list."""
+        if self._hide_preview_section and self._external_preview_panel:
+            selected_numbers = self._external_preview_panel.get_selected_declarations()
+            selected_declarations = [
+                decl for decl in self.preview_manager._all_declarations
+                if decl.declaration_number in selected_numbers
+            ]
+            self.preview_manager._selected_declarations = {decl.id for decl in selected_declarations}
+        else:
+            selected_declarations = self.preview_manager.get_selected_declarations()
+
+        if not selected_declarations:
+            messagebox.showwarning(
+                "Không có tờ khai",
+                "Vui lòng chọn ít nhất một tờ khai để tải mã vạch"
+            )
+            return
+
+        if self._batch_limiter:
+            is_valid, message = self._batch_limiter.validate_selection(len(selected_declarations))
+            if not is_valid:
+                messagebox.showwarning("Vượt quá giới hạn", message)
+                return
+
+        declarations_data = []
+        for decl in selected_declarations:
+            declarations_data.append({
+                'tax_code': decl.tax_code,
+                'declaration_number': decl.declaration_number,
+                'date': decl.declaration_date,
+                'customs_office_code': getattr(decl, 'customs_office_code', ''),
+                'company_name': getattr(decl, 'company_name', '')
+            })
+
+        self.download_specific_declarations(declarations_data)
+
+    def _should_populate_external_preview(self) -> bool:
+        """Return True when it is safe to populate the external preview panel."""
+        if not self._external_preview_panel:
+            return False
+
+        preview_tree = getattr(self._external_preview_panel, "preview_tree", None)
+        if preview_tree is None:
+            return True
+
+        get_children = getattr(preview_tree, "get_children", None)
+        if not callable(get_children):
+            return True
+
+        try:
+            children = get_children()
+        except Exception:
+            return True
+
+        if isinstance(children, (list, tuple)):
+            return len(children) == 0
+
+        return True
+
     def download_specific_declarations(self, declarations: List[Dict[str, Any]]) -> None:
         """
         Download specific declarations passed from external source (e.g. Tracking Tab).
@@ -1258,6 +1318,8 @@ class EnhancedManualPanel(ttk.Frame):
         from models.declaration_models import Declaration
         
         target_declarations = []
+        preview_data = []
+        skipped_invalid = 0
         for d in declarations:
             # Handle key variations
             decl_num = d.get('declaration_number') or d.get('decl_number')
@@ -1265,6 +1327,7 @@ class EnhancedManualPanel(ttk.Frame):
             
             # Skip invalid
             if not decl_num or not tax_code:
+                skipped_invalid += 1
                 continue
                 
             # Create Declaration object (or similar)
@@ -1273,13 +1336,28 @@ class EnhancedManualPanel(ttk.Frame):
             # Parse date
             decl_date = d.get('date') or d.get('declaration_date')
             if isinstance(decl_date, str):
-                try:
-                    decl_date = datetime.strptime(decl_date, "%d/%m/%Y")
-                except:
+                parsed_date = None
+                for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%Y/%m/%d"):
                     try:
-                        decl_date = datetime.strptime(decl_date, "%Y-%m-%d") 
-                    except:
-                        decl_date = datetime.now()
+                        parsed_date = datetime.strptime(decl_date, fmt)
+                        break
+                    except ValueError:
+                        continue
+
+                if parsed_date is None:
+                    try:
+                        parsed_date = datetime.fromisoformat(decl_date)
+                    except ValueError:
+                        self._log(
+                            'warning',
+                            f"Unrecognized declaration date '{decl_date}' for {decl_num}, using current date"
+                        )
+                        parsed_date = datetime.now()
+
+                decl_date = parsed_date
+
+            if decl_date is None:
+                decl_date = datetime.now()
             
             decl_obj = Declaration(
                 declaration_number=decl_num,
@@ -1290,39 +1368,67 @@ class EnhancedManualPanel(ttk.Frame):
                 channel="",
                 status="",
                 goods_description=None,
-                company_name=d.get('company_name', '')
+                company_name=d.get('company_name', ''),
+                declaration_type=d.get('declaration_type', ''),
+                bill_of_lading=d.get('bill_of_lading', ''),
+                invoice_number=d.get('invoice_number', '')
             )
             target_declarations.append(decl_obj)
+            preview_data.append({
+                'declaration_number': decl_num,
+                'tax_code': tax_code,
+                'date': decl_date,
+                'status': d.get('status', ''),
+                'declaration_type': d.get('declaration_type', ''),
+                'bill_of_lading': d.get('bill_of_lading', ''),
+                'invoice_number': d.get('invoice_number', ''),
+                'result': d.get('result', '')
+            })
             
+        if skipped_invalid:
+            self._log('warning', f"Skipped {skipped_invalid} declarations with missing tax_code or declaration_number")
+
         if not target_declarations:
             messagebox.showwarning("Cảnh báo", "Không có dữ liệu hợp lệ để tải.")
             return
 
-        # Reuse download logic
-        # We need to bypass 'selected_declarations' logic of download_selected
-        # Can we refactor download_selected/download_in_thread to accept list?
-        # download_in_thread is nested inside download_selected.
-        # We should extract the inner logic or copy it.
-        # Given constraints, I'll copy/adapt the logic to run immediately.
-        
-        # Check dependencies
+        self._log('info', f"Prepared {len(target_declarations)} declarations for download")
+
+        if self._external_preview_panel and preview_data and self._should_populate_external_preview():
+            self._external_preview_panel.populate_preview(preview_data)
+
+        self.perform_download(target_declarations)
+        return
+
+    def perform_download(self, target_declarations) -> None:
+        """Execute download for a list of Declaration objects."""
+        if not target_declarations:
+            messagebox.showwarning("Cảnh báo", "Không có dữ liệu hợp lệ để tải.")
+            return
+
         if not self.barcode_retriever or not self.file_manager or not self.tracking_db:
             messagebox.showerror("Lỗi", "Thiếu dependency.")
             return
 
         self._update_pdf_naming_service()
+        if self.barcode_retriever and hasattr(self.barcode_retriever, 'reset_method_skip_list'):
+            self.barcode_retriever.reset_method_skip_list()
+            self._log('debug', "Barcode retriever skip list reset for batch")
+        naming_format = ""
+        if self.file_manager and self.file_manager.pdf_naming_service:
+            naming_format = self.file_manager.pdf_naming_service.naming_format
+        self._log('info', f"Starting download batch: total={len(target_declarations)}, naming_format={naming_format}")
         self.stop_download_flag = False
         self.clear_session_errors()
         self._set_state("downloading")
-        
+
         if self._external_preview_panel:
             self._external_preview_panel.set_downloading_state(True)
-            
-        # Run in thread
+
         def download_thread():
             from concurrent.futures import ThreadPoolExecutor, as_completed
             from threading import Lock
-            
+
             success = 0
             error = 0
             skipped = 0
@@ -1330,41 +1436,57 @@ class EnhancedManualPanel(ttk.Frame):
             completed = 0
             lock = Lock()
             output_dir = self.output_var.get()
-            
-            self.file_manager.output_directory = output_dir
 
-            with ThreadPoolExecutor(max_workers=3) as executor:
-                futures = []
-                for decl in target_declarations:
-                     # We reuse the process logic. 
-                     # But since process_single_declaration is nested in download_selected,
-                     # we must duplicate it or make it a method.
-                     # For safety and speed now, I'll call barcode_retriever directly here.
-                     futures.append(executor.submit(self._process_single_download, decl, output_dir, lock))
-                     
-                for future in as_completed(futures):
-                    result_type, decl_res = future.result()
-                    completed += 1
-                    
-                    if result_type == 'success':
-                        success += 1
-                    elif result_type == 'skipped':
-                        skipped += 1
-                    else:
-                        error += 1
-                        
-                    # Update progress
-                    progress = (completed / total) * 100
-                    if self._external_preview_panel:
-                        self.after(0, lambda p=progress, c=completed, t=total: 
-                            self._external_preview_panel.update_progress(p, c, t))
-                            
-            # Finish
-            self.after(0, lambda: self._show_download_result_popup(success, error, skipped, total))
-            self.after(0, lambda: self._set_state("ready"))
-            if self._external_preview_panel:
-                self.after(0, lambda: self._external_preview_panel.set_downloading_state(False))
-                
+            try:
+                self.file_manager.output_directory = output_dir
+
+                with ThreadPoolExecutor(max_workers=3) as executor:
+                    futures = []
+                    for decl in target_declarations:
+                        futures.append(executor.submit(self._process_single_download, decl, output_dir, lock))
+
+                    for future in as_completed(futures):
+                        try:
+                            result_type, declaration, file_path, error_message = future.result()
+                        except Exception as e:
+                            self._log('error', f"Download worker failed: {e}", exc_info=True)
+                            error += 1
+                            completed += 1
+                            continue
+
+                        completed += 1
+
+                        if result_type == 'success':
+                            success += 1
+                            self.after(0, lambda dn=declaration.declaration_number, fp=file_path:
+                                self._update_download_result(dn, True, file_path=fp))
+                        elif result_type == 'skipped':
+                            skipped += 1
+                            message = error_message or 'File could not be saved (skipped)'
+                            self.after(0, lambda dn=declaration.declaration_number, em=message:
+                                self._update_download_result(dn, False, error_message=em))
+                        else:
+                            error += 1
+                            message = error_message or 'Failed to retrieve barcode from API'
+                            self.after(0, lambda dn=declaration.declaration_number, em=message:
+                                self._update_download_result(dn, False, error_message=em))
+
+                        progress = (completed / total) * 100
+                        if self._external_preview_panel:
+                            self.after(0, lambda p=progress, c=completed, t=total:
+                                self._external_preview_panel.update_progress(p, c, t))
+            except Exception as e:
+                self._log('error', f"Download batch failed: {e}", exc_info=True)
+                remaining = total - completed
+                if remaining > 0:
+                    error += remaining
+            finally:
+                # Always restore UI state, even if the background thread errors.
+                self.after(0, lambda: self._show_download_result_popup(success, error, skipped, total))
+                self.after(0, lambda: self._set_state("complete"))
+                if self._external_preview_panel:
+                    self.after(0, lambda: self._external_preview_panel.set_downloading_state(False))
+
         import threading
         t = threading.Thread(target=download_thread, daemon=True)
         t.start()
@@ -1373,8 +1495,10 @@ class EnhancedManualPanel(ttk.Frame):
         """Helper for list download"""
         try:
             if self.stop_download_flag:
-                return 'skipped', declaration
-                
+                self._log('info', f"Skipping download for {declaration.id} (stop flag set)")
+                return 'skipped', declaration, None, 'Stopped'
+            
+            self._log('info', f"Downloading barcode for {declaration.id}")
             pdf_content = self.barcode_retriever.retrieve_barcode(declaration)
             if pdf_content:
                 file_path = self.file_manager.save_barcode(declaration, pdf_content, overwrite=True)
@@ -1383,281 +1507,16 @@ class EnhancedManualPanel(ttk.Frame):
                     try:
                         self.tracking_db.save_recent_company(declaration.tax_code)
                     except: pass
-                    return 'success', declaration
+                    return 'success', declaration, file_path, None
                 else:
-                    return 'skipped', declaration
+                    self._log('warning', f"Failed to save barcode PDF for {declaration.id}")
+                    return 'skipped', declaration, None, 'File could not be saved (skipped)'
             else:
-                 return 'error', declaration
-        except Exception:
-            return 'error', declaration
-
-            if self._hide_preview_section and self._external_preview_panel:
-                # Get selected declaration numbers from PreviewPanel
-                selected_numbers = self._external_preview_panel.get_selected_declarations()
-                
-                # Find matching Declaration objects
-                selected_declarations = [
-                    decl for decl in self.preview_manager._all_declarations
-                    if decl.declaration_number in selected_numbers
-                ]
-                
-                # Sync selection to preview_manager for consistency
-                self.preview_manager._selected_declarations = {decl.id for decl in selected_declarations}
-            else:
-                selected_declarations = self.preview_manager.get_selected_declarations()
-            
-            if not selected_declarations:
-                messagebox.showwarning(
-                    "Không có tờ khai",
-                    "Vui lòng chọn ít nhất một tờ khai để tải mã vạch"
-                )
-                return
-            
-            # Validate selection count against batch limit (Requirements 10.1, 10.2)
-            if self._batch_limiter:
-                is_valid, message = self._batch_limiter.validate_selection(len(selected_declarations))
-                if not is_valid:
-                    messagebox.showwarning("Vượt quá giới hạn", message)
-                    return
-            
-            # Check if required dependencies are available
-            if not self.barcode_retriever or not self.file_manager or not self.tracking_db:
-                self._log('error', "Missing required dependencies for download")
-                messagebox.showerror(
-                    "Lỗi cấu hình",
-                    "Thiếu các thành phần cần thiết để tải mã vạch"
-                )
-                return
-            
-            # Update PDF naming service from current config (Requirements 5.3)
-            self._update_pdf_naming_service()
-            
-            self._log('info', f"Starting download for {len(selected_declarations)} declarations")
-            
-            # Reset stop flag
-            self.stop_download_flag = False
-            
-            # Clear previous session errors before starting new download (Requirements 1.1)
-            self.clear_session_errors()
-            
-            # Set state to downloading
-            self._set_state("downloading")
-            
-            # Update external preview panel state
-            if self._external_preview_panel:
-                self._external_preview_panel.set_downloading_state(True)
-            
-            # Run download in background thread with parallel processing (Requirements 9.1)
-            def download_in_thread():
-                from concurrent.futures import ThreadPoolExecutor, as_completed
-                from threading import Lock
-                
-                success_count = 0
-                error_count = 0
-                skipped_count = 0
-                total = len(selected_declarations)
-                completed_count = 0
-                count_lock = Lock()
-                
-                # Set output directory once
-                output_dir = self.output_var.get()
-                
-                def process_single_declaration(declaration):
-                    """Process a single declaration - runs in thread pool"""
-                    nonlocal success_count, error_count, skipped_count, completed_count
-                    
-                    # Check stop flag
-                    if self.stop_download_flag:
-                        return None
-                    
-                    try:
-                        self._log('info', f"Processing declaration: {declaration.id}")
-                        
-                        # Update file_manager output directory
-                        self.file_manager.output_directory = output_dir
-                        
-                        # Retrieve barcode
-                        pdf_content = self.barcode_retriever.retrieve_barcode(declaration)
-                        
-                        if pdf_content:
-                            # Save to file
-                            file_path = self.file_manager.save_barcode(
-                                declaration,
-                                pdf_content,
-                                overwrite=True
-                            )
-                            
-                            if file_path:
-                                # Track in database
-                                self.tracking_db.add_processed(declaration, file_path)
-                                
-                                # Update recent companies (Requirements 11.3)
-                                try:
-                                    self.tracking_db.save_recent_company(declaration.tax_code)
-                                except Exception as rc_error:
-                                    self._log('warning', f"Failed to save recent company: {rc_error}")
-                                
-                                with count_lock:
-                                    success_count += 1
-                                self._log('info', f"Successfully saved barcode for {declaration.id}")
-                                
-                                # Update result column with green checkmark (Requirements 3.5, 3.6)
-                                self.after(0, lambda dn=declaration.declaration_number, fp=file_path: 
-                                    self._update_download_result(dn, True, file_path=fp))
-                                return ('success', declaration)
-                            else:
-                                with count_lock:
-                                    skipped_count += 1
-                                self._log('warning', f"Skipped saving barcode for {declaration.id}")
-                                
-                                # Record error for skipped file (Requirements 1.1, 1.2)
-                                skip_error = 'File could not be saved (skipped)'
-                                self._record_error(
-                                    declaration_number=declaration.declaration_number,
-                                    error_type='file_error',
-                                    error_message=skip_error
-                                )
-                                
-                                # Update result column with red X for skipped (Requirements 4.1)
-                                self.after(0, lambda dn=declaration.declaration_number, em=skip_error: 
-                                    self._update_download_result(dn, False, error_message=em))
-                                return ('skipped', declaration)
-                        else:
-                            with count_lock:
-                                error_count += 1
-                            self._log('error', f"Failed to retrieve barcode for {declaration.id}")
-                            
-                            # Record error for failed retrieval (Requirements 1.1, 1.2)
-                            api_error = 'Failed to retrieve barcode from API'
-                            self._record_error(
-                                declaration_number=declaration.declaration_number,
-                                error_type='api_error',
-                                error_message=api_error
-                            )
-                            
-                            # Update result column with red X for error (Requirements 4.1)
-                            self.after(0, lambda dn=declaration.declaration_number, em=api_error: 
-                                self._update_download_result(dn, False, error_message=em))
-                            return ('error', declaration)
-                    
-                    except Exception as e:
-                        with count_lock:
-                            error_count += 1
-                        self._log('error', f"Error processing {declaration.id}: {e}", exc_info=True)
-                        
-                        # Record exception error (Requirements 1.1, 1.2)
-                        exc_error = str(e)
-                        self._record_error(
-                            declaration_number=declaration.declaration_number,
-                            error_type='exception',
-                            error_message=exc_error
-                        )
-                        
-                        # Update result column with red X for exception (Requirements 4.1)
-                        self.after(0, lambda dn=declaration.declaration_number, em=exc_error: 
-                            self._update_download_result(dn, False, error_message=em))
-                        return ('error', declaration)
-                
-                try:
-                    # Use ThreadPoolExecutor for parallel downloads (Requirements 9.1)
-                    # Limit to 3 concurrent downloads to avoid overwhelming the server
-                    MAX_CONCURRENT = 3
-                    
-                    with ThreadPoolExecutor(max_workers=MAX_CONCURRENT) as executor:
-                        # Submit all tasks
-                        futures = {executor.submit(process_single_declaration, decl): decl 
-                                   for decl in selected_declarations}
-                        
-                        # Process completed tasks
-                        for future in as_completed(futures):
-                            if self.stop_download_flag:
-                                # Cancel remaining futures
-                                for f in futures:
-                                    f.cancel()
-                                break
-                            
-                            with count_lock:
-                                completed_count += 1
-                            
-                            # Update progress
-                            progress = int((completed_count / total) * 100)
-                            self.after(0, lambda p=progress, idx=completed_count, t=total: 
-                                self._update_progress(p, idx, t))
-                    
-                    # Update final progress
-                    final_progress = 100 if not self.stop_download_flag else int((completed_count / total) * 100)
-                    self.after(0, lambda: self._update_progress(final_progress, completed_count, total))
-                    
-                    # Show summary
-                    if self.stop_download_flag:
-                        summary_msg = f"Đã dừng tải xuống\n\n"
-                        summary_msg += f"Hoàn thành: {success_count}/{total}\n"
-                        summary_msg += f"Đã xử lý: {completed_count}/{total}\n"
-                        summary_msg += f"Còn lại: {total - completed_count}\n"
-                        if error_count > 0:
-                            summary_msg += f"Lỗi: {error_count}\n"
-                        
-                        self.after(0, lambda: messagebox.showinfo("Đã dừng", summary_msg))
-                        if not self._hide_preview_section and hasattr(self, 'preview_status_label'):
-                            self.after(0, lambda: self.preview_status_label.config(
-                                text=f"Đã dừng: {success_count}/{total} thành công (đa luồng)",
-                                foreground="orange"
-                            ))
-                        elif self._external_preview_panel:
-                            self.after(0, lambda: self._external_preview_panel.update_status(
-                                f"Đã dừng: {success_count}/{total} thành công (đa luồng)"))
-                    else:
-                        # Show custom result popup with "Open folder" button
-                        self.after(0, lambda sc=success_count, ec=error_count, sk=skipped_count, t=total: 
-                            self._show_download_result_popup(sc, ec, sk, t))
-                        if not self._hide_preview_section and hasattr(self, 'preview_status_label'):
-                            self.after(0, lambda: self.preview_status_label.config(
-                                text=f"Hoàn thành: {success_count}/{total} thành công (đa luồng)",
-                                foreground="green"
-                            ))
-                        elif self._external_preview_panel:
-                            self.after(0, lambda: self._external_preview_panel.update_status(
-                                f"Hoàn thành: {success_count}/{total} thành công (đa luồng)"))
-                    
-                    self._log('info', f"Download completed: {success_count} success, {error_count} errors, {skipped_count} skipped")
-                    
-                    # Call download complete callback (Requirements 10.1, 10.2, 10.3)
-                    if self.on_download_complete:
-                        self.after(0, lambda sc=success_count, ec=error_count: 
-                            self.on_download_complete(sc, ec))
-                    
-                    # Refresh recent companies panel (Requirements 11.3)
-                    self.after(0, self._load_recent_companies)
-                    
-                    # Update external preview panel - enable retry if errors
-                    if self._external_preview_panel:
-                        self.after(0, lambda: self._external_preview_panel.set_downloading_state(False))
-                        if error_count > 0:
-                            self.after(0, lambda: self._external_preview_panel.enable_retry_button(True))
-                
-                except Exception as e:
-                    self._log('error', f"Download thread failed: {e}", exc_info=True)
-                    self.after(0, lambda: messagebox.showerror(
-                        "Lỗi",
-                        f"Lỗi trong quá trình tải:\n{str(e)}"
-                    ))
-                finally:
-                    # Reset state
-                    self.after(0, lambda: self._set_state("complete"))
-                    self.is_operation_running = False
-            
-            # Start download thread
-            self.is_operation_running = True
-            self.download_thread = threading.Thread(target=download_in_thread, daemon=True)
-            self.download_thread.start()
-        
+                self._log('warning', f"Barcode retrieval returned no content for {declaration.id}")
+                return 'error', declaration, None, 'Failed to retrieve barcode from API'
         except Exception as e:
-            self._log('error', f"Download failed: {e}", exc_info=True)
-            messagebox.showerror(
-                "Lỗi",
-                f"Không thể tải mã vạch:\n{str(e)}"
-            )
-            self._set_state("preview_displayed")
+            self._log('error', f"Download error for {getattr(declaration, 'id', 'unknown')}: {e}", exc_info=True)
+            return 'error', declaration, None, str(e)
     
     def _show_download_result_popup(self, success_count: int, error_count: int, skipped_count: int, total: int) -> None:
         """
@@ -1967,6 +1826,9 @@ class EnhancedManualPanel(ttk.Frame):
                 return
             
             self._log('info', f"Retrying download for {len(failed_declarations)} failed declarations")
+            if self.barcode_retriever and hasattr(self.barcode_retriever, 'reset_method_skip_list'):
+                self.barcode_retriever.reset_method_skip_list()
+                self._log('debug', "Barcode retriever skip list reset for retry batch")
             
             # Reset stop flag
             self.stop_download_flag = False

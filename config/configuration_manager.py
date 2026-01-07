@@ -313,6 +313,41 @@ class ConfigurationManager:
         
         with open(self.config_path, 'w') as config_file:
             self.config.write(config_file)
+
+    def merge_missing_from_sample(self, sample_path: str) -> bool:
+        """
+        Merge missing sections/options from a sample config file.
+
+        Args:
+            sample_path: Path to config.ini.sample
+
+        Returns:
+            True if any changes were applied
+        """
+        if not sample_path or not os.path.exists(sample_path):
+            return False
+
+        sample = configparser.ConfigParser(interpolation=None)
+        try:
+            sample.read(sample_path)
+        except Exception:
+            return False
+
+        changed = False
+        for section in sample.sections():
+            if not self.config.has_section(section):
+                self.config.add_section(section)
+                changed = True
+
+            for option, value in sample.items(section):
+                if not self.config.has_option(section, option):
+                    self.config.set(section, option, value)
+                    changed = True
+
+        if changed:
+            self._save_config_file()
+
+        return changed
     
     def validate(self) -> None:
         """

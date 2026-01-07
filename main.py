@@ -14,7 +14,7 @@ import os
 import threading
 
 # Application version
-APP_VERSION = "1.5.0"
+from core.version import APP_VERSION
 
 # Import configuration and logging
 from config.configuration_manager import ConfigurationManager, ConfigurationError
@@ -62,6 +62,7 @@ def signal_handler(sig, frame):
 
 
 def main():
+    logger_instance = None
     """Main application entry point"""
     global _app
     
@@ -83,8 +84,21 @@ def main():
         
         try:
             config_manager = ConfigurationManager(config_path)
+
+            last_run_version = config_manager.get('Update', 'last_run_version', fallback='')
+            if last_run_version != APP_VERSION:
+                sample_path = os.path.join(os.path.dirname(config_path), 'config.ini.sample')
+                if not os.path.exists(sample_path):
+                    app_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.getcwd()
+                    sample_path = os.path.join(app_dir, 'config.ini.sample')
+
+                merged = config_manager.merge_missing_from_sample(sample_path)
+                config_manager.set('Update', 'last_run_version', APP_VERSION)
+                if merged:
+                    print("INFO: Config merged from sample after update")
+
             config_manager.validate()
-            print("✓ Configuration loaded successfully")
+            print("OK Configuration loaded successfully")
         except ConfigurationError as e:
             print(f"ERROR: Configuration validation failed:")
             print(f"  {e}")
@@ -98,7 +112,7 @@ def main():
         logger.info("=" * 60)
         logger.info("Customs Barcode Automation Starting")
         logger.info("=" * 60)
-        print("✓ Logging system initialized")
+        print("OK Logging system initialized")
         
         # 3. Initialize Database Connector
         print("Initializing database connector...")
@@ -115,25 +129,25 @@ def main():
         
         if db_connected:
             logger.info("Database connection established")
-            print("✓ Database connector initialized")
+            print("OK Database connector initialized")
         else:
             logger.warning("Failed to connect to ECUS5 database - application will start without database connection")
-            print("⚠ WARNING: Failed to connect to ECUS5 database")
+            print("WARNING: Failed to connect to ECUS5 database")
             print("  Application will start, but you need to configure database connection.")
-            print("  Use 'Cấu hình DB' button in the application to set up database.")
+            print("  Use the 'DB Config' button in the application to set up database.")
         
         # 4. Initialize Tracking Database
         print("Initializing tracking database...")
         tracking_db_path = "data/tracking.db"
         tracking_db = TrackingDatabase(tracking_db_path, logger)
         logger.info("Tracking database initialized")
-        print("✓ Tracking database initialized")
+        print("OK Tracking database initialized")
         
         # 5. Initialize Declaration Processor
         print("Initializing declaration processor...")
         processor = DeclarationProcessor()
         logger.info("Declaration processor initialized")
-        print("✓ Declaration processor initialized")
+        print("OK Declaration processor initialized")
         
         # 6. Initialize Barcode Retriever
         print("Initializing barcode retriever...")
@@ -144,7 +158,7 @@ def main():
             retrieval_method=barcode_config.retrieval_method
         )
         logger.info(f"Barcode retriever initialized with method: {barcode_config.retrieval_method}")
-        print("✓ Barcode retriever initialized")
+        print("OK Barcode retriever initialized")
         
         # 7. Initialize File Manager with PDF Naming Service
         print("Initializing file manager...")
@@ -154,7 +168,7 @@ def main():
         file_manager = FileManager(output_path, pdf_naming_service)
         file_manager.ensure_directory_exists()
         logger.info(f"File manager initialized with output path: {output_path}, naming format: {pdf_naming_format}")
-        print("✓ File manager initialized")
+        print("OK File manager initialized")
         
         # 8. Initialize Error Handler
         print("Initializing error handler...")
@@ -164,7 +178,7 @@ def main():
             logger=logger.get_logger()
         )
         logger.info("Error handler initialized")
-        print("✓ Error handler initialized")
+        print("OK Error handler initialized")
         
         # 9. Initialize Scheduler
         print("Initializing scheduler...")
@@ -179,7 +193,7 @@ def main():
         )
         scheduler_instance = scheduler
         logger.info("Scheduler initialized")
-        print("✓ Scheduler initialized")
+        print("OK Scheduler initialized")
         
         # 10. Initialize GUI
         print("Initializing GUI...")
@@ -214,7 +228,7 @@ def main():
         )
         
         logger.info("GUI initialized")
-        print("✓ GUI initialized")
+        print("OK GUI initialized")
         
         # 11. Check for updates in background
         def check_updates_background():
@@ -269,6 +283,33 @@ def main():
                                     )
                                     
                                     root.after(0, progress_dialog.close)
+
+                                    checksum_url = getattr(update_info, "checksum_url", "")
+                                    ok, reason, expected, actual = download_manager.verify_checksum(filepath, checksum_url)
+                                    if not ok and reason not in ("no_checksum",):
+                                        def show_warning():
+                                            if reason == "download_failed":
+                                                message = "Khong the tai file checksum (.sha256). Van tiep tuc cap nhat."
+                                            elif reason == "parse_failed":
+                                                message = "File checksum khong hop le. Van tiep tuc cap nhat."
+                                            elif reason == "read_failed":
+                                                message = "Khong the doc file update de kiem tra checksum. Van tiep tuc cap nhat."
+                                            elif reason == "mismatch":
+                                                message = "Checksum khong khop voi file da tai. Van tiep tuc cap nhat."
+                                            else:
+                                                message = "Khong the xac minh checksum. Van tiep tuc cap nhat."
+
+                                            logger.warning(
+                                                f"Checksum verify warning: {reason} expected={expected} actual={actual}"
+                                            )
+                                            messagebox.showwarning("Canh bao", message)
+
+                                        wait_event = threading.Event()
+                                        def show_and_signal():
+                                            show_warning()
+                                            wait_event.set()
+                                        root.after(0, show_and_signal)
+                                        wait_event.wait()
                                     
                                     # Handle ZIP extraction with auto-update
                                     if download_manager.is_zip_file(filepath):

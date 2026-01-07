@@ -148,8 +148,11 @@ class WorkflowService:
             
             result.total_fetched = len(declarations)
             result.total_eligible = len(declarations)
-            
+
             self._emit_event(WorkflowEvent.started(len(declarations)))
+
+            if self.barcode_retriever and hasattr(self.barcode_retriever, 'reset_method_skip_list'):
+                self.barcode_retriever.reset_method_skip_list()
             
             # 2. Process each declaration
             for idx, declaration in enumerate(declarations):

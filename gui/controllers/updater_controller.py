@@ -139,6 +139,11 @@ class UpdaterController:
                 )
                 
                 self.root.after(0, progress_dialog.close)
+
+                checksum_url = getattr(update_info, "checksum_url", "")
+                ok, reason, expected, actual = download_manager.verify_checksum(filepath, checksum_url)
+                if not ok and reason not in ("no_checksum",):
+                    self._warn_checksum(reason, expected, actual)
                 
                 if download_manager.is_zip_file(filepath):
                     self.root.after(0, lambda: self._handle_zip_update(download_manager, filepath))
@@ -154,6 +159,33 @@ class UpdaterController:
                 self._download_in_progress = False
         
         threading.Thread(target=download, daemon=True).start()
+
+    def _warn_checksum(self, reason: str, expected: str, actual: str) -> None:
+        """Show a non-blocking checksum warning but allow update to continue."""
+        if reason == "download_failed":
+            message = "Khong the tai file checksum (.sha256). Van tiep tuc cap nhat."
+        elif reason == "parse_failed":
+            message = "File checksum khong hop le. Van tiep tuc cap nhat."
+        elif reason == "read_failed":
+            message = "Khong the doc file update de kiem tra checksum. Van tiep tuc cap nhat."
+        elif reason == "mismatch":
+            message = "Checksum khong khop voi file da tai. Van tiep tuc cap nhat."
+        else:
+            message = "Khong the xac minh checksum. Van tiep tuc cap nhat."
+
+        self.logger.warning(f"Checksum verify warning: {reason} expected={expected} actual={actual}")
+        self._show_warning_and_wait("Canh bao", message)
+
+    def _show_warning_and_wait(self, title: str, message: str) -> None:
+        """Show a warning messagebox on UI thread and wait for dismissal."""
+        done = threading.Event()
+
+        def show():
+            messagebox.showwarning(title, message)
+            done.set()
+
+        self.root.after(0, show)
+        done.wait()
     
     def _handle_zip_update(self, download_manager, filepath: str) -> None:
         """Handle ZIP archive update."""

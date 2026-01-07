@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.5.2] - 2026-01-06
+
+### ✅ Improvements
+
+- Thêm tiền tố `MV_` cho tên file mã vạch PDF ở mọi định dạng đặt tên
+- Đồng bộ hiển thị version lên v1.5.2
+
+---
+
 ## [1.5.1] - 2026-01-02
 
 ### 🐛 Bug Fixes

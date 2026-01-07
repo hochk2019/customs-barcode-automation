@@ -330,7 +330,7 @@ class EcusDataConnector:
         self._ensure_connection()
         
         try:
-            cursor = self._connection.cursor()
+            cursor = self.get_connection().cursor()
             
             # Build SQL query with optional tax code filter
             query = """
@@ -455,7 +455,7 @@ class EcusDataConnector:
         self._ensure_connection()
         
         try:
-            cursor = self._connection.cursor()
+            cursor = self.get_connection().cursor()
             
             # Query to get company name from DaiLy_DoanhNghiep table
             query = """

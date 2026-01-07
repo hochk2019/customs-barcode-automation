@@ -11,6 +11,8 @@ Implements Requirements 1.1, 2.3, 2.4, 2.6, 5.1, 7.1, 7.5, 7.6
 """
 
 import tkinter as tk
+import logging
+import configparser
 from tkinter import ttk, messagebox
 from typing import Optional, TYPE_CHECKING
 
@@ -727,6 +729,21 @@ class SettingsDialog:
             
             # Persist to file
             self.config_manager.save()
+
+            # Log saved values from file to confirm persistence
+            try:
+                verify_config = configparser.ConfigParser(interpolation=None)
+                verify_config.read(self.config_manager.config_path)
+                saved_method = verify_config.get('BarcodeService', 'retrieval_method', fallback='')
+                saved_format = verify_config.get('BarcodeService', 'pdf_naming_format', fallback='')
+                logging.getLogger("CustomsAutomation").info(
+                    f"Settings saved to {self.config_manager.config_path}: "
+                    f"retrieval_method={saved_method}, pdf_naming_format={saved_format}"
+                )
+            except Exception as verify_error:
+                logging.getLogger("CustomsAutomation").warning(
+                    f"Settings saved, but verification failed: {verify_error}"
+                )
             
             # Notify tracking panel about auto-check setting change
             if self.on_auto_check_changed:

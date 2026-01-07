@@ -13,6 +13,7 @@ from typing import Dict, Optional, Tuple, Callable, List
 import math
 
 from config.configuration_manager import ConfigurationManager
+from gui.styles import ModernStyles
 
 
 class ThemeManager:
@@ -1080,8 +1081,16 @@ class ThemeManager:
                 treeview.tag_configure('info', background='#E6F2FA', foreground='#0078D4')
             
             # Update result column tags
-            treeview.tag_configure('success_result', foreground=colors['success'], font=('Segoe UI', 12, 'bold'))
-            treeview.tag_configure('error_result', foreground=colors['error'], font=('Segoe UI', 12, 'bold'))
+            treeview.tag_configure(
+                'success_result',
+                foreground=colors['success'],
+                font=(ModernStyles.FONT_FAMILY, ModernStyles.FONT_SIZE_NORMAL, 'bold')
+            )
+            treeview.tag_configure(
+                'error_result',
+                foreground=colors['error'],
+                font=(ModernStyles.FONT_FAMILY, ModernStyles.FONT_SIZE_NORMAL, 'bold')
+            )
             
         except Exception:
             pass  # Ignore errors for treeviews that can't be configured

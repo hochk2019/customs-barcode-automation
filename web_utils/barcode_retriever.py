@@ -158,7 +158,9 @@ class BarcodeRetriever:
         # Note: backup_web removed in V2.0 due to CAPTCHA
         self._failed_methods = {
             'api': 0,
-            'web': 0
+            'web': 0,
+            'primary_web': 0,
+            'backup_web': 0
         }
         self._skip_threshold = 3  # Skip after 3 consecutive failures
     
@@ -1460,7 +1462,9 @@ class BarcodeRetriever:
         """
         self._failed_methods = {
             'api': 0,
-            'web': 0
+            'web': 0,
+            'primary_web': 0,
+            'backup_web': 0
         }
         self.logger.debug("Method skip list reset for new batch")
     

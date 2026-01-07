@@ -1,10 +1,10 @@
 {
   "include_pending": true,
-  "exclude_xnktc": false,
+  "exclude_xnktc": true,
   "max_companies": 6,
   "selected_companies": [
     "2300782217",
-    "0109742786"
+    "2301158516"
   ],
   "default_date_days": 1,
   "auto_check_enabled": true,
@@ -17,5 +17,20 @@
   "recent_companies": [],
   "api_timeout_seconds": 10,
   "tracking_sort_order": "pending_first",
-  "recent_customs_codes": []
+  "recent_customs_codes": [],
+  "preview_filter_index": 0,
+  "preview_sort_column": "",
+  "preview_sort_descending": false,
+  "preview_column_widths": {
+    "#0": 30,
+    "stt": 68,
+    "declaration_number": 158,
+    "tax_code": 129,
+    "date": 119,
+    "status": 139,
+    "declaration_type": 109,
+    "bill_of_lading": 149,
+    "invoice_number": 129,
+    "result": 109
+  }
 }

@@ -54,9 +54,9 @@ class TestPreferencesService:
     
     def test_integer_clamping(self, prefs_service):
         """Test that integers are clamped to schema bounds."""
-        # max_companies has max=10
+        # max_companies has max=15
         prefs_service.set("max_companies", 20)
-        assert prefs_service.max_companies == 10
+        assert prefs_service.max_companies == 15
         
         # min=1
         prefs_service.set("max_companies", 0)

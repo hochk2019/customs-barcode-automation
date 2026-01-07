@@ -2,8 +2,10 @@
 Download manager for update files.
 """
 
+import hashlib
 import logging
 import os
+import re
 import tempfile
 import time
 import zipfile
@@ -138,6 +140,114 @@ class DownloadManager:
             return actual_size == expected_size
         except OSError:
             return False
+
+    def download_checksum_file(self, url: str, filename: str = None) -> Optional[str]:
+        """
+        Download checksum file to the download directory.
+
+        Args:
+            url: URL to checksum file
+            filename: Optional filename override
+
+        Returns:
+            Path to checksum file or None on failure
+        """
+        import requests
+
+        if not url:
+            return None
+
+        if not filename:
+            filename = os.path.basename(url) or "update.sha256"
+
+        filepath = os.path.join(self.download_dir, filename)
+        try:
+            response = requests.get(url, timeout=15)
+            response.raise_for_status()
+            with open(filepath, 'wb') as f:
+                f.write(response.content)
+            logger.info(f"Checksum file downloaded: {filepath}")
+            return filepath
+        except Exception as e:
+            logger.warning(f"Failed to download checksum file: {e}")
+            return None
+
+    def parse_sha256_file(self, filepath: str) -> Optional[str]:
+        """
+        Parse sha256 checksum value from a checksum file.
+
+        Args:
+            filepath: Path to checksum file
+
+        Returns:
+            Hex digest string or None if not found
+        """
+        try:
+            with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+        except OSError:
+            return None
+
+        return self._extract_sha256_from_text(content)
+
+    def _extract_sha256_from_text(self, content: str) -> Optional[str]:
+        """Extract the first 64-hex sha256 hash from content."""
+        if not content:
+            return None
+        match = re.search(r"\b[a-fA-F0-9]{64}\b", content)
+        if match:
+            return match.group(0).lower()
+        return None
+
+    def compute_sha256(self, filepath: str) -> str:
+        """
+        Compute sha256 checksum for a file.
+
+        Args:
+            filepath: Path to file
+
+        Returns:
+            Hex digest string
+        """
+        digest = hashlib.sha256()
+        with open(filepath, 'rb') as f:
+            for chunk in iter(lambda: f.read(8192), b''):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    def verify_checksum(self, filepath: str, checksum_url: str) -> tuple:
+        """
+        Verify file checksum using a remote .sha256 file.
+
+        Args:
+            filepath: Path to downloaded file
+            checksum_url: URL to checksum file
+
+        Returns:
+            (ok, reason, expected, actual)
+        """
+        if not checksum_url:
+            return True, "no_checksum", "", ""
+
+        checksum_path = self.download_checksum_file(checksum_url)
+        if not checksum_path:
+            return False, "download_failed", "", ""
+
+        expected = self.parse_sha256_file(checksum_path)
+        if not expected:
+            return False, "parse_failed", "", ""
+
+        try:
+            actual = self.compute_sha256(filepath)
+        except OSError as e:
+            logger.warning(f"Failed to read downloaded file for checksum: {e}")
+            return False, "read_failed", expected, ""
+
+        if actual.lower() != expected.lower():
+            return False, "mismatch", expected, actual
+
+        logger.info("Checksum verified successfully")
+        return True, "ok", expected, actual
     
     def _cleanup_partial_file(self, filepath: str) -> None:
         """Remove partial download file."""
@@ -147,6 +257,12 @@ class DownloadManager:
                 logger.info(f"Removed partial file: {filepath}")
         except OSError as e:
             logger.warning(f"Failed to remove partial file: {e}")
+
+    def _is_within_directory(self, base_dir: str, target_path: str) -> bool:
+        """Return True when target_path is inside base_dir."""
+        base_dir = os.path.abspath(base_dir)
+        target_path = os.path.abspath(target_path)
+        return os.path.commonpath([base_dir, target_path]) == base_dir
     
     def save_pending_installer(self, filepath: str, config_manager) -> None:
         """
@@ -221,7 +337,11 @@ class DownloadManager:
             logger.info(f"Extracting {zip_path} to {target_dir}")
             
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                zip_ref.extractall(target_dir)
+                for member in zip_ref.infolist():
+                    dest_path = os.path.join(target_dir, member.filename)
+                    if not self._is_within_directory(target_dir, dest_path):
+                        raise DownloadError(f"Unsafe path in zip: {member.filename}")
+                    zip_ref.extract(member, target_dir)
             
             logger.info(f"Extraction complete: {target_dir}")
             return target_dir

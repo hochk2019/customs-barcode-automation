@@ -60,6 +60,8 @@ class ParallelDownloader:
             Dictionary mapping declaration_id to success status
         """
         self._stop_event.clear()
+        if self.barcode_retriever and hasattr(self.barcode_retriever, 'reset_method_skip_list'):
+            self.barcode_retriever.reset_method_skip_list()
         results = {}
         total = len(declarations)
         completed = 0

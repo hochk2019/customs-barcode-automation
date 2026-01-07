@@ -465,7 +465,11 @@ class CustomsAutomationGUI:
                     'declaration_number': decl.get('declaration_number', ''),
                     'date': decl.get('declaration_date') or decl.get('date', None),
                     'customs_code': decl.get('customs_code') or decl.get('customs_office_code', ''),
-                    'company_name': decl.get('company_name', '')
+                    'company_name': decl.get('company_name', ''),
+                    'declaration_type': decl.get('declaration_type', ''),
+                    'status': decl.get('status', ''),
+                    'bill_of_lading': decl.get('bill_of_lading', ''),
+                    'invoice_number': decl.get('invoice_number', '')
                 })
             self.enhanced_manual_panel.download_specific_declarations(declarations)
         else:
@@ -1026,8 +1030,17 @@ class CustomsAutomationGUI:
                 
                 # Update barcode retriever method
                 if hasattr(self, 'barcode_retriever'):
-                    self.barcode_retriever.retrieval_method = retrieval_method
-                    self.logger.info(f"Barcode retriever method updated: {retrieval_method}")
+                    if hasattr(self.barcode_retriever, 'set_retrieval_method'):
+                        self.barcode_retriever.set_retrieval_method(retrieval_method)
+                        updated_method = getattr(
+                            self.barcode_retriever.retrieval_method,
+                            'value',
+                            self.barcode_retriever.retrieval_method
+                        )
+                    else:
+                        self.barcode_retriever.retrieval_method = retrieval_method
+                        updated_method = retrieval_method
+                    self.logger.info(f"Barcode retriever method updated: {updated_method}")
             
             def on_auto_check_changed(enabled: bool, interval: int):
                 """Callback when auto-check settings change - update UI immediately."""

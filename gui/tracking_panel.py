@@ -166,7 +166,8 @@ class TrackingPanel(ttk.Frame):
             self.stop_btn.config(
                 state=tk.DISABLED,
                 bg=self._secondary_cfg['bg'],
-                fg=self._secondary_cfg['fg']
+                fg=self._secondary_cfg['fg'],
+                disabledforeground=self._secondary_cfg.get('disabledforeground', '#f8f9fa')
             )
 
     def _bind_hover_effects(self, button: tk.Button, style: str) -> None:
@@ -387,6 +388,7 @@ class TrackingPanel(ttk.Frame):
         # Get secondary config for disabled state
         secondary_cfg = ModernStyles.get_button_config('secondary')
         secondary_cfg['font'] = bold_font
+        secondary_cfg['disabledforeground'] = '#f8f9fa'
         
         self.stop_btn = tk.Button(
              action_frame,

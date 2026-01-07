@@ -73,6 +73,12 @@ class PreferencesService:
         
         # API settings (v1.5.1)
         "api_timeout_seconds": {"type": int, "default": 10, "min": 5, "max": 60},
+
+        # Preview panel state (v1.5.2)
+        "preview_filter_index": {"type": int, "default": 0, "min": 0, "max": 10},
+        "preview_sort_column": {"type": str, "default": ""},
+        "preview_sort_descending": {"type": bool, "default": False},
+        "preview_column_widths": {"type": dict, "default": {}},
     }
     
     def __init__(self, preferences_path: str = "data/preferences.json"):
@@ -168,6 +174,14 @@ class PreferencesService:
                 value = [v.strip() for v in value.split(',') if v.strip()]
             else:
                 value = list(value)
+        elif expected_type == dict and not isinstance(value, dict):
+            if isinstance(value, str):
+                try:
+                    value = json.loads(value)
+                except json.JSONDecodeError:
+                    value = {}
+            else:
+                value = dict(value)
         elif expected_type == str and not isinstance(value, str):
             value = str(value)
         

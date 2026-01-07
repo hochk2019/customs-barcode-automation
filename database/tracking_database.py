@@ -51,9 +51,11 @@ class TrackingDatabase:
     
     def _initialize_database(self) -> None:
         """Create database schema if it doesn't exist"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         try:
             cursor = conn.cursor()
+
+            cursor.execute("PRAGMA journal_mode=WAL")
             
             # Create processed_declarations table
             cursor.execute("""
@@ -112,7 +114,7 @@ class TrackingDatabase:
                     cleared_at TEXT,
                     added_at TEXT NOT NULL,
                     notified INTEGER DEFAULT 0,
-                    UNIQUE(declaration_number)
+                    UNIQUE(tax_code, declaration_number)
                 )
             ''')
             
@@ -128,6 +130,9 @@ class TrackingDatabase:
                 )
             ''')
 
+            conn.commit()
+            self._ensure_tracking_unique_constraint(conn)
+
             if self.logger:
                 self.logger.info("Tracking database initialized successfully")
                 
@@ -137,6 +142,132 @@ class TrackingDatabase:
             raise
         finally:
             conn.close()
+
+    def _normalize_tracking_date(self, declaration_date: Any) -> str:
+        """
+        Normalize tracking declaration date to YYYY-MM-DD.
+
+        Returns empty string if no date provided. For unknown formats, returns
+        the original string and logs a warning.
+        """
+        if isinstance(declaration_date, datetime):
+            return declaration_date.strftime("%Y-%m-%d")
+
+        if isinstance(declaration_date, str):
+            date_str = declaration_date.strip()
+            if not date_str:
+                return ""
+
+            date_part = date_str.split()[0]
+            for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%Y/%m/%d"):
+                try:
+                    return datetime.strptime(date_part, fmt).strftime("%Y-%m-%d")
+                except ValueError:
+                    continue
+
+            try:
+                return datetime.fromisoformat(date_str).strftime("%Y-%m-%d")
+            except ValueError:
+                if self.logger:
+                    self.logger.warning(
+                        f"Unrecognized declaration_date format: {declaration_date}"
+                    )
+                return date_str
+
+        return ""
+
+    def _ensure_tracking_unique_constraint(self, conn: Optional[sqlite3.Connection] = None) -> None:
+        """
+        Ensure tracking_declarations uses UNIQUE(tax_code, declaration_number).
+
+        If the legacy UNIQUE(declaration_number) exists, rebuild the table.
+        """
+        own_conn = False
+        if conn is None:
+            conn = self._get_connection()
+            own_conn = True
+
+        try:
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA index_list('tracking_declarations')")
+            indexes = cursor.fetchall()
+
+            has_composite = False
+            has_single = False
+            for row in indexes:
+                index_name = row[1]
+                is_unique = bool(row[2])
+                if not is_unique:
+                    continue
+
+                cursor.execute(f"PRAGMA index_info('{index_name}')")
+                cols = [info[2] for info in cursor.fetchall()]
+                if cols == ["tax_code", "declaration_number"] or cols == ["declaration_number", "tax_code"]:
+                    has_composite = True
+                elif cols == ["declaration_number"]:
+                    has_single = True
+
+            if has_single or not has_composite:
+                self._rebuild_tracking_declarations(conn)
+                if self.logger:
+                    self.logger.info(
+                        "Rebuilt tracking_declarations to use UNIQUE(tax_code, declaration_number)"
+                    )
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Failed to ensure tracking unique constraint: {e}", exc_info=True)
+        finally:
+            if own_conn:
+                conn.close()
+
+    def _rebuild_tracking_declarations(self, conn: sqlite3.Connection) -> None:
+        """Rebuild tracking_declarations table with new unique constraint."""
+        cursor = conn.cursor()
+        foreign_keys = cursor.execute("PRAGMA foreign_keys").fetchone()
+        fk_enabled = bool(foreign_keys[0]) if foreign_keys else False
+
+        cursor.execute("PRAGMA foreign_keys = OFF")
+        cursor.execute("BEGIN")
+        try:
+            cursor.execute("ALTER TABLE tracking_declarations RENAME TO tracking_declarations_old")
+            cursor.execute('''
+                CREATE TABLE tracking_declarations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    tax_code TEXT NOT NULL,
+                    declaration_number TEXT NOT NULL,
+                    customs_code TEXT,
+                    declaration_date TEXT,
+                    company_name TEXT,
+                    status TEXT DEFAULT 'pending',
+                    last_checked TEXT,
+                    cleared_at TEXT,
+                    added_at TEXT NOT NULL,
+                    notified INTEGER DEFAULT 0,
+                    UNIQUE(tax_code, declaration_number)
+                )
+            ''')
+            cursor.execute('''
+                INSERT INTO tracking_declarations (
+                    id, tax_code, declaration_number, customs_code, declaration_date,
+                    company_name, status, last_checked, cleared_at, added_at, notified
+                )
+                SELECT
+                    id, tax_code, declaration_number, customs_code, declaration_date,
+                    company_name, status, last_checked, cleared_at, added_at, notified
+                FROM tracking_declarations_old
+            ''')
+            cursor.execute("DROP TABLE tracking_declarations_old")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            try:
+                cursor.execute("ALTER TABLE tracking_declarations_old RENAME TO tracking_declarations")
+                conn.commit()
+            except Exception:
+                conn.rollback()
+            raise
+        finally:
+            cursor.execute(f"PRAGMA foreign_keys = {'ON' if fk_enabled else 'OFF'}")
             
     def cleanup_old_records(self, retention_days: int) -> int:
         """
@@ -151,7 +282,7 @@ class TrackingDatabase:
         if retention_days < 1:
             return 0
             
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         try:
             cursor = conn.cursor()
             
@@ -205,7 +336,7 @@ class TrackingDatabase:
         Returns:
             List of TrackingDeclaration objects
         """
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         try:
             cursor = conn.cursor()
             
@@ -257,24 +388,23 @@ class TrackingDatabase:
         Returns:
             True if added, False if duplicate or failed
         """
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         try:
             cursor = conn.cursor()
             
             # Format date
-            date_str = ""
-            if isinstance(declaration_date, datetime):
-                # We want just the date part for display usually, but DB stores as TEXT.
-                # Let's standardize on YYYY-MM-DD for sorting/filtering consistency
-                date_str = declaration_date.strftime("%Y-%m-%d")
-            elif isinstance(declaration_date, str):
-                date_str = declaration_date
+            date_str = self._normalize_tracking_date(declaration_date)
             
             # Check if exists
-            cursor.execute("SELECT id FROM tracking_declarations WHERE declaration_number = ?", (declaration_number,))
+            cursor.execute(
+                "SELECT id FROM tracking_declarations WHERE declaration_number = ? AND tax_code = ?",
+                (declaration_number, tax_code)
+            )
             if cursor.fetchone():
                 if self.logger:
-                    self.logger.info(f"Declaration {declaration_number} already in tracking.")
+                    self.logger.info(
+                        f"Declaration {declaration_number} for tax_code {tax_code} already in tracking."
+                    )
                 return False
             
             now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -344,7 +474,7 @@ class TrackingDatabase:
             declaration: Declaration that was processed
             file_path: Path to the saved PDF file
         """
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         try:
             cursor = conn.cursor()
             
@@ -384,7 +514,7 @@ class TrackingDatabase:
         Returns:
             True if declaration is in tracking database, False otherwise
         """
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         try:
             cursor = conn.cursor()
             
@@ -417,7 +547,7 @@ class TrackingDatabase:
         Returns:
             Set of declaration IDs (format: tax_code_declaration_number_date)
         """
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         try:
             cursor = conn.cursor()
             
@@ -451,7 +581,7 @@ class TrackingDatabase:
         Returns:
             List of ProcessedDeclaration objects
         """
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         try:
             cursor = conn.cursor()
             
@@ -489,6 +619,12 @@ class TrackingDatabase:
             raise
         finally:
             conn.close()
+
+    def get_all_processed_declarations(self) -> List[ProcessedDeclaration]:
+        """
+        Backward-compatible alias for get_all_processed_details.
+        """
+        return self.get_all_processed_details()
     
     def search_declarations(self, query: str) -> List[ProcessedDeclaration]:
         """
@@ -500,7 +636,7 @@ class TrackingDatabase:
         Returns:
             List of matching ProcessedDeclaration objects
         """
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         try:
             cursor = conn.cursor()
             
@@ -550,7 +686,7 @@ class TrackingDatabase:
         Args:
             declaration: Declaration to update
         """
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         try:
             cursor = conn.cursor()
             
@@ -587,7 +723,7 @@ class TrackingDatabase:
             tax_code: Company tax code
             company_name: Company name
         """
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         try:
             cursor = conn.cursor()
             
@@ -618,7 +754,7 @@ class TrackingDatabase:
         Returns:
             List of tuples (tax_code, company_name, last_seen)
         """
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         try:
             cursor = conn.cursor()
             
@@ -647,7 +783,7 @@ class TrackingDatabase:
         Returns:
             List of tuples (tax_code, company_name, last_seen)
         """
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         try:
             cursor = conn.cursor()
             
@@ -680,7 +816,7 @@ class TrackingDatabase:
             
         Requirements: 11.3, 11.4
         """
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         try:
             cursor = conn.cursor()
             
@@ -725,7 +861,7 @@ class TrackingDatabase:
             
         Requirements: 11.3, 11.4
         """
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         try:
             cursor = conn.cursor()
             
@@ -756,7 +892,7 @@ class TrackingDatabase:
     
     def clear_recent_companies(self) -> None:
         """Clear all recent companies."""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         try:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM recent_companies")
@@ -783,7 +919,7 @@ class TrackingDatabase:
                 self.logger.error(f"Directory does not exist: {directory}")
             raise ValueError(f"Directory does not exist: {directory}")
         
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         try:
             cursor = conn.cursor()
             
@@ -867,7 +1003,7 @@ class TrackingDatabase:
         Returns:
             ID of inserted row, or None if already exists
         """
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         cursor = conn.cursor()
         
         try:
@@ -905,7 +1041,7 @@ class TrackingDatabase:
         Returns:
             List of TrackingDeclaration objects
         """
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         cursor = conn.cursor()
         
         try:
@@ -960,7 +1096,7 @@ class TrackingDatabase:
             status: New status
             response_data: Optional response data from check
         """
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         cursor = conn.cursor()
         
         try:
@@ -992,7 +1128,7 @@ class TrackingDatabase:
     
     def mark_notified(self, declaration_id: int) -> None:
         """Mark a declaration as notified."""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         cursor = conn.cursor()
         
         try:
@@ -1007,7 +1143,7 @@ class TrackingDatabase:
     
     def delete_declaration(self, declaration_id: int) -> None:
         """Delete a tracked declaration."""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         cursor = conn.cursor()
         
         try:
@@ -1027,7 +1163,7 @@ class TrackingDatabase:
         Returns:
             Number of entries deleted
         """
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_connection()
         cursor = conn.cursor()
         
         try:

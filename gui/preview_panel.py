@@ -16,6 +16,7 @@ from gui.styles import ModernStyles
 from gui.components.tooltip import ToolTip, BUTTON_TOOLTIPS
 from models.declaration_models import Declaration
 from config.user_preferences import get_preferences
+from config.preferences_service import get_preferences_service
 
 
 class PreviewPanel(ttk.Frame):
@@ -85,13 +86,29 @@ class PreviewPanel(ttk.Frame):
         # Selection state
         self._select_all_var = tk.BooleanVar(value=False)
         self._selected_items: List[str] = []
+        self._item_data_by_id: Dict[str, Dict[str, Any]] = {}
+        self._all_declarations: List[Dict[str, Any]] = []
+        self._filtered_declarations: List[Dict[str, Any]] = []
+        self._declarations: List[Dict[str, Any]] = []
         
         # Filter options
         self._filter_options = ["Tất cả", "Chưa lấy", "Đã lấy", "Lỗi"]
         self._current_filter = "Tất cả"
+        self._sort_column: Optional[str] = None
+        self._sort_descending = False
+        self._retry_enabled = False
+        self._retry_restore = False
+        self._preferences_service = get_preferences_service()
+        self._overlay_message = ""
+        self._overlay_spinner_frames = ["|", "/", "-", "\\"]
+        self._overlay_spinner_index = 0
+        self._overlay_spinner_after_id = None
         
         # Create widgets
         self._create_widgets()
+
+        # Restore saved filter/sort/column settings
+        self._load_preview_settings()
         
         # Windows workaround: Force button colors after widget creation
         self.after_idle(self._force_button_colors)
@@ -316,6 +333,23 @@ class PreviewPanel(ttk.Frame):
         self.preview_tree.heading("bill_of_lading", text="Vận đơn")
         self.preview_tree.heading("invoice_number", text="Số hóa đơn")
         self.preview_tree.heading("result", text="Kết quả")
+
+        self._base_heading_text = {
+            "stt": "STT",
+            "declaration_number": "Số tờ khai",
+            "tax_code": "Mã số thuế",
+            "date": "Ngày",
+            "status": "Trạng thái",
+            "declaration_type": "Loại hình",
+            "bill_of_lading": "Vận đơn",
+            "invoice_number": "Số hóa đơn",
+            "result": "Kết quả",
+        }
+        self._column_keys = ("#0",) + tuple(self._base_heading_text.keys())
+        self._sortable_columns = list(self._base_heading_text.keys())
+
+        for col in self._sortable_columns:
+            self.preview_tree.heading(col, command=lambda c=col: self._toggle_sort(c))
         
         # Column widths
         self.preview_tree.column("#0", width=30, stretch=False)
@@ -327,15 +361,28 @@ class PreviewPanel(ttk.Frame):
         self.preview_tree.column("declaration_type", width=80)
         self.preview_tree.column("bill_of_lading", width=120)
         self.preview_tree.column("invoice_number", width=100)
-        self.preview_tree.column("result", width=80)
+        self.preview_tree.column("result", width=80, anchor=tk.CENTER)
         
         # Configure tags for styling
         ModernStyles.configure_treeview_tags(self.preview_tree)
         
         self.preview_tree.pack(fill=tk.BOTH, expand=True)
+
+        # Busy overlay (shown during long-running tasks)
+        self._overlay_frame = tk.Frame(tree_frame, bg=ModernStyles.BG_SECONDARY)
+        self._overlay_label = tk.Label(
+            self._overlay_frame,
+            text="",
+            bg=ModernStyles.BG_SECONDARY,
+            fg=ModernStyles.TEXT_PRIMARY,
+            font=(ModernStyles.FONT_FAMILY, ModernStyles.FONT_SIZE_NORMAL, 'bold')
+        )
+        self._overlay_label.pack(expand=True)
+        self._overlay_frame.place_forget()
         
         # Bind selection events
         self.preview_tree.bind("<ButtonRelease-1>", self._on_tree_click)
+        self.preview_tree.bind("<ButtonRelease-1>", self._on_tree_mouse_up, add=True)
         
         # Row 4: Progress and Status
         status_frame = ttk.Frame(self)
@@ -414,7 +461,7 @@ class PreviewPanel(ttk.Frame):
             self.export_btn: ModernStyles.PRIMARY_COLOR,
             self.retry_btn: '#FF9800',  # warning
         }
-        
+
         for btn, color in button_colors.items():
             if hasattr(btn, '_is_sunken') and not btn._is_sunken:
                 btn.configure(bg=color)
@@ -569,7 +616,91 @@ class PreviewPanel(ttk.Frame):
     def _on_filter_change(self, event=None) -> None:
         """Handle filter dropdown change."""
         self._current_filter = self.filter_var.get()
-        # Filter logic would be implemented here
+        self._save_preview_settings()
+        self._apply_filter()
+
+    def _apply_filter(self) -> None:
+        """Filter preview items based on current filter selection."""
+        if not self._all_declarations:
+            self._render_preview_items([])
+            return
+
+        filter_value = self._current_filter
+        filtered = []
+        for decl in self._all_declarations:
+            result = str(decl.get('result', '')).strip()
+
+            if filter_value == self._filter_options[0]:
+                filtered.append(decl)
+            elif filter_value == self._filter_options[1]:
+                if result not in ("✔", "✘"):
+                    filtered.append(decl)
+            elif filter_value == self._filter_options[2]:
+                if result == "✔":
+                    filtered.append(decl)
+            elif filter_value == self._filter_options[3]:
+                if result == "✘":
+                    filtered.append(decl)
+            else:
+                filtered.append(decl)
+
+        filtered = self._sort_declarations(filtered)
+        self._filtered_declarations = filtered
+        self._render_preview_items(filtered)
+
+    def _render_preview_items(self, declarations: List[Dict[str, Any]]) -> None:
+        """Render preview items to treeview while preserving selection."""
+        selected_numbers = set()
+        for item_id in self._selected_items:
+            values = self.preview_tree.item(item_id, "values")
+            if values:
+                selected_numbers.add(str(values[1]).strip())
+
+        for item in self.preview_tree.get_children():
+            self.preview_tree.delete(item)
+
+        self._selected_items = []
+        self._item_data_by_id = {}
+
+        for index, decl in enumerate(declarations):
+            row_tag = 'evenrow' if index % 2 == 0 else 'oddrow'
+
+            tags = [row_tag]
+            result_value = str(decl.get('result', '')).strip()
+            if result_value == "✔":
+                tags.extend(['success_result', 'success'])
+            elif result_value == "✘":
+                tags.extend(['error_result', 'error'])
+
+            date_str = decl.get('date', '')
+            if isinstance(date_str, datetime):
+                date_str = date_str.strftime("%d/%m/%Y")
+
+            item_id = self.preview_tree.insert(
+                "",
+                tk.END,
+                text="☐",
+                values=(
+                    index + 1,
+                    decl.get('declaration_number', ''),
+                    decl.get('tax_code', ''),
+                    date_str,
+                    decl.get('status', 'Chua ki?m tra'),
+                    decl.get('declaration_type', ''),
+                    decl.get('bill_of_lading', ''),
+                    decl.get('invoice_number', ''),
+                    decl.get('result', '')
+                ),
+                tags=tuple(tags)
+            )
+            self._item_data_by_id[item_id] = decl
+
+            decl_num = str(decl.get('declaration_number', '')).strip()
+            if decl_num and decl_num in selected_numbers:
+                self.preview_tree.item(item_id, text="☑")
+                self._selected_items.append(item_id)
+
+        self._update_selection_count()
     
     def _update_selection_count(self) -> None:
         """Update selection count label."""
@@ -579,111 +710,87 @@ class PreviewPanel(ttk.Frame):
     def populate_preview(self, declarations: List[Dict[str, Any]]) -> None:
         """
         Populate preview tree with declarations.
-        
+
         Args:
             declarations: List of declaration dictionaries with keys:
                 - declaration_number, tax_code, date, status, result
                 - Optional: stt, checkbox, declaration_type, bill_of_lading, invoice_number
         """
-        # Clear existing items
-        for item in self.preview_tree.get_children():
-            self.preview_tree.delete(item)
-        
         self._selected_items = []
         self._select_all_var.set(False)
-        
-        # Store declarations for later reference
-        self._declarations = declarations
-        
-        # Add declarations
-        for index, decl in enumerate(declarations):
-            # Determine row tag
-            row_tag = 'evenrow' if index % 2 == 0 else 'oddrow'
-            
-            # Format date
-            date_str = decl.get('date', '')
-            if isinstance(date_str, datetime):
-                date_str = date_str.strftime("%d/%m/%Y")
-            
-            self.preview_tree.insert(
-                "",
-                tk.END,
-                text="☐",
-                values=(
-                    index + 1,  # STT (số thứ tự bắt đầu từ 1)
-                    decl.get('declaration_number', ''),
-                    decl.get('tax_code', ''),
-                    date_str,
-                    decl.get('status', 'Chưa kiểm tra'), # Default status
-                    decl.get('declaration_type', ''),
-                    decl.get('bill_of_lading', ''),
-                    decl.get('invoice_number', ''),
-                    decl.get('result', '')
-                ),
-                tags=(row_tag,)
-            )
-            
+
+        self._all_declarations = [dict(decl) for decl in declarations]
+        self._declarations = self._all_declarations
+        self._filtered_declarations = []
+        self._apply_filter()
+
     def get_selected_declarations_data(self) -> List[Dict[str, Any]]:
         """
         Get data of selected declarations.
         Returns list of dicts.
         """
-        selected_data = []
-        
-        # Create map for fast lookup
-        if not hasattr(self, '_declarations') or not self._declarations:
-            # Fallback to tree parsing if no source data (shouldn't happen)
-            return []
-            
-        decl_map = {d.get('declaration_number'): d for d in self._declarations}
-        
+        selected_data: List[Dict[str, Any]] = []
+
         for item_id in self._selected_items:
+            if item_id in self._item_data_by_id:
+                selected_data.append(self._item_data_by_id[item_id])
+                continue
+
             values = self.preview_tree.item(item_id, "values")
             if not values:
                 continue
-                
-            decl_num = values[1]
-            if decl_num in decl_map:
-                selected_data.append(decl_map[decl_num])
-            else:
-                # Fallback: create minimal dict from tree
-                data = {
-                    'declaration_number': values[1],
-                    'tax_code': values[2],
-                    'date': values[3],
-                    'status': values[4],
-                    'declaration_type': values[5],
-                    # Try to preserve what we can
-                }
-                selected_data.append(data)
-                
+
+            data = {
+                'declaration_number': values[1],
+                'tax_code': values[2],
+                'date': values[3],
+                'status': values[4],
+                'declaration_type': values[5],
+                'bill_of_lading': values[6] if len(values) > 6 else '',
+                'invoice_number': values[7] if len(values) > 7 else '',
+                'result': values[8] if len(values) > 8 else ''
+            }
+            selected_data.append(data)
+
         return selected_data
 
     def update_item_status(self, declaration_number: str, new_status: str) -> None:
         """
         Update status column for a specific declaration.
         """
+        target = str(declaration_number).strip()
         for item_id in self.preview_tree.get_children():
             values = self.preview_tree.item(item_id, "values")
-            if values[1] == declaration_number: # decl_num is at index 1
-                # Update status (index 4)
-                new_values = list(values)
-                new_values[4] = new_status
-                
-                # Update status color based on content
-                tags = list(self.preview_tree.item(item_id, "tags"))
-                if "Thông quan" in new_status:
-                     if "cleared" not in tags: tags.append("cleared")
-                elif "Lỗi" in new_status:
-                     if "error" not in tags: tags.append("error")
-                
-                self.preview_tree.item(item_id, values=new_values, tags=tags)
-                break
-    
+            if not values:
+                continue
+
+            current = str(values[1]).strip()
+            if current != target:
+                continue
+
+            new_values = list(values)
+            new_values[4] = new_status
+
+            tags = list(self.preview_tree.item(item_id, "tags"))
+            tags = [t for t in tags if t not in ("success", "error")]
+            if "Th“ng quan" in new_status:
+                tags.append("success")
+            elif "L?i" in new_status:
+                tags.append("error")
+
+            self.preview_tree.item(item_id, values=new_values, tags=tuple(tags))
+
+            if item_id in self._item_data_by_id:
+                self._item_data_by_id[item_id]['status'] = new_status
+
+        for decl in self._all_declarations:
+            if str(decl.get('declaration_number', '')).strip() == target:
+                decl['status'] = new_status
+
     def get_selected_declarations(self) -> List[str]:
         """
         Get list of selected declaration numbers.
-        
+
         Returns:
             List of selected declaration numbers
         """
@@ -691,57 +798,50 @@ class PreviewPanel(ttk.Frame):
         for item in self._selected_items:
             values = self.preview_tree.item(item, "values")
             if values:
-                selected.append(values[1])  # declaration_number (index 1 after STT)
+                selected.append(values[1])
         return selected
 
-    def get_selected_declarations_data(self) -> List[Dict[str, Any]]:
-        """
-        Get list of selected declaration data dictionaries.
-        
-        Returns:
-            List of dictionaries with declaration data
-        """
-        selected_data = []
-        # Create map for fast lookup if needed, or iterate
-        # self._declarations stores the original data passed to populate_preview
-        
-        if not hasattr(self, '_declarations') or not self._declarations:
-            return []
-            
-        # Map declaration number to data
-        decl_map = {d.get('declaration_number'): d for d in self._declarations}
-        
-        for item in self._selected_items:
-            values = self.preview_tree.item(item, "values")
-            if values:
-                decl_num = values[1]
-                if decl_num in decl_map:
-                    selected_data.append(decl_map[decl_num])
-                    
-        return selected_data
-    
     def update_item_result(self, declaration_number: str, result: str, is_success: bool) -> None:
         """
         Update result column for a specific declaration.
-        
+
         Args:
             declaration_number: Declaration number to update
             result: Result text
             is_success: True for success styling, False for error
         """
-        for item in self.preview_tree.get_children():
-            values = self.preview_tree.item(item, "values")
-            if values and values[1] == declaration_number:  # index 1 after STT
-                # Update result column (index 8 - last column after adding STT)
-                new_values = list(values)
-                new_values[8] = result
-                self.preview_tree.item(item, values=tuple(new_values))
-                
-                # Update tag for styling
-                tag = 'success' if is_success else 'error'
-                self.preview_tree.item(item, tags=(tag,))
-                break
-    
+        target = str(declaration_number).strip()
+        for item_id in self.preview_tree.get_children():
+            values = self.preview_tree.item(item_id, "values")
+            if not values:
+                continue
+
+            current = str(values[1]).strip()
+            if current != target:
+                continue
+
+            new_values = list(values)
+            new_values[8] = result
+            self.preview_tree.item(item_id, values=tuple(new_values))
+
+            tags = list(self.preview_tree.item(item_id, "tags"))
+            tags = [t for t in tags if t not in ("success_result", "error_result", "success", "error")]
+            if is_success:
+                tags.extend(["success_result", "success"])
+            else:
+                tags.extend(["error_result", "error"])
+            self.preview_tree.item(item_id, tags=tuple(tags))
+
+            if item_id in self._item_data_by_id:
+                self._item_data_by_id[item_id]['result'] = result
+
+        for decl in self._all_declarations:
+            if str(decl.get('declaration_number', '')).strip() == target:
+                decl['result'] = result
+
+        if self._current_filter != self._filter_options[0]:
+            self._apply_filter()
+
     def update_status(self, text: str, is_error: bool = False) -> None:
         """
         Update status label.
@@ -752,6 +852,185 @@ class PreviewPanel(ttk.Frame):
         """
         color = ModernStyles.ERROR_COLOR if is_error else ModernStyles.TEXT_SECONDARY
         self.status_label.configure(text=text, foreground=color)
+
+    def _load_preview_settings(self) -> None:
+        """Load filter/sort/column width settings from preferences."""
+        prefs = self._preferences_service
+        try:
+            filter_index = int(prefs.get("preview_filter_index", 0))
+        except (TypeError, ValueError):
+            filter_index = 0
+
+        if filter_index < 0 or filter_index >= len(self._filter_options):
+            filter_index = 0
+
+        self._current_filter = self._filter_options[filter_index]
+        self.filter_var.set(self._current_filter)
+
+        sort_column = prefs.get("preview_sort_column", "")
+        sort_desc = bool(prefs.get("preview_sort_descending", False))
+        if sort_column in self._sortable_columns:
+            self._sort_column = sort_column
+            self._sort_descending = sort_desc
+        else:
+            self._sort_column = None
+            self._sort_descending = False
+
+        widths = prefs.get("preview_column_widths", {})
+        if isinstance(widths, dict):
+            for col, width in widths.items():
+                if col in self._column_keys and isinstance(width, int) and width > 0:
+                    try:
+                        self.preview_tree.column(col, width=width)
+                    except tk.TclError:
+                        pass
+
+        self._update_sort_indicator()
+        self._apply_filter()
+
+    def _save_preview_settings(self) -> None:
+        """Persist filter/sort/column width settings to preferences."""
+        prefs = self._preferences_service
+        try:
+            filter_index = self._filter_options.index(self._current_filter)
+        except ValueError:
+            filter_index = 0
+
+        prefs.set("preview_filter_index", filter_index)
+        prefs.set("preview_sort_column", self._sort_column or "")
+        prefs.set("preview_sort_descending", bool(self._sort_descending))
+        prefs.set("preview_column_widths", self._get_column_widths())
+
+    def _get_column_widths(self) -> Dict[str, int]:
+        """Collect current treeview column widths."""
+        widths: Dict[str, int] = {}
+        for col in self._column_keys:
+            try:
+                widths[col] = int(self.preview_tree.column(col, "width"))
+            except (tk.TclError, ValueError, TypeError):
+                continue
+        return widths
+
+    def _persist_column_settings(self) -> None:
+        """Persist column widths without changing filter/sort state."""
+        prefs = self._preferences_service
+        prefs.set("preview_column_widths", self._get_column_widths())
+
+    def _on_tree_mouse_up(self, event) -> None:
+        """Persist column widths after resize actions."""
+        try:
+            region = self.preview_tree.identify_region(event.x, event.y)
+        except tk.TclError:
+            region = ""
+        if region in ("separator", "heading"):
+            self._persist_column_settings()
+
+    def _sort_declarations(self, declarations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Sort declarations based on current sort state."""
+        if not self._sort_column:
+            return list(declarations)
+
+        def sort_key(item: Dict[str, Any]):
+            value = item.get(self._sort_column, "")
+            if self._sort_column == "stt":
+                try:
+                    return int(value)
+                except (TypeError, ValueError):
+                    return 0
+            if self._sort_column == "date":
+                if isinstance(value, datetime):
+                    return value
+                if isinstance(value, str) and value.strip():
+                    for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%Y/%m/%d"):
+                        try:
+                            return datetime.strptime(value.strip(), fmt)
+                        except ValueError:
+                            continue
+                return datetime.min
+            return str(value).lower()
+
+        return sorted(declarations, key=sort_key, reverse=self._sort_descending)
+
+    def _toggle_sort(self, column: str) -> None:
+        """Toggle sort state for a column."""
+        if column not in self._sortable_columns:
+            return
+
+        if self._sort_column == column:
+            self._sort_descending = not self._sort_descending
+        else:
+            self._sort_column = column
+            self._sort_descending = False
+
+        self._update_sort_indicator()
+        self._save_preview_settings()
+        self._apply_filter()
+
+    def _update_sort_indicator(self) -> None:
+        """Update column header text with sort indicator."""
+        for col, label in self._base_heading_text.items():
+            text = label
+            if self._sort_column == col:
+                text = f"{label} {'v' if self._sort_descending else '^'}"
+            self.preview_tree.heading(col, text=text)
+
+    def _show_overlay(self, message: str) -> None:
+        """Show overlay message during background tasks."""
+        if not message:
+            message = "⏳ Đang xử lý, vui lòng chờ..."
+        self._overlay_message = message
+        self._start_overlay_spinner()
+        self._overlay_frame.place(relx=0, rely=0, relwidth=1, relheight=1)
+        self._overlay_frame.lift()
+
+    def _hide_overlay(self) -> None:
+        """Hide overlay message."""
+        self._stop_overlay_spinner()
+        self._overlay_frame.place_forget()
+
+    def _start_overlay_spinner(self) -> None:
+        """Start spinner animation for overlay."""
+        if self._overlay_spinner_after_id:
+            try:
+                self.after_cancel(self._overlay_spinner_after_id)
+            except tk.TclError:
+                pass
+        self._overlay_spinner_index = 0
+        self._animate_overlay_spinner()
+
+    def _stop_overlay_spinner(self) -> None:
+        """Stop spinner animation for overlay."""
+        if self._overlay_spinner_after_id:
+            try:
+                self.after_cancel(self._overlay_spinner_after_id)
+            except tk.TclError:
+                pass
+            self._overlay_spinner_after_id = None
+
+    def _animate_overlay_spinner(self) -> None:
+        """Animate spinner frames inside overlay."""
+        if not self._overlay_spinner_frames:
+            self._overlay_label.configure(text=self._overlay_message)
+            return
+        frame = self._overlay_spinner_frames[self._overlay_spinner_index % len(self._overlay_spinner_frames)]
+        self._overlay_label.configure(text=f"{self._overlay_message} {frame}")
+        self._overlay_spinner_index += 1
+        self._overlay_spinner_after_id = self.after(120, self._animate_overlay_spinner)
+
+    def _set_filter_controls_state(self, enabled: bool) -> None:
+        """Enable or disable filter/selection controls."""
+        combo_state = "readonly" if enabled else "disabled"
+        self.filter_combo.configure(state=combo_state)
+
+        cb_state = tk.NORMAL if enabled else tk.DISABLED
+        self.select_all_cb.configure(state=cb_state)
+        self.include_pending_checkbox.configure(state=cb_state)
+        self.exclude_xnktc_checkbox.configure(state=cb_state)
+
+        if enabled:
+            self.preview_tree.state(["!disabled"])
+        else:
+            self.preview_tree.state(["disabled"])
     
     def show_progress(self, show: bool = True) -> None:
         """
@@ -789,20 +1068,33 @@ class PreviewPanel(ttk.Frame):
             is_downloading: True when downloading
         """
         if is_downloading:
-            # Disable preview and download buttons (normal disabled)
+            # Disable actions while running
             self._set_button_disabled(self.preview_btn)
             self._set_button_disabled(self.download_btn)
+            self._set_button_disabled(self.cancel_btn)
+            self._set_button_disabled(self.add_tracking_btn)
+            self._set_button_disabled(self.export_btn)
+
             # Enable stop button (raised/prominent)
             self._set_button_raised(self.stop_btn)
             # Keep retry sunken
+            self._retry_restore = self._retry_enabled
             self._set_button_sunken(self.retry_btn)
+            self._set_filter_controls_state(False)
+            self._show_overlay("⏳ Đang lấy mã vạch, vui lòng chờ...")
             self.show_progress(True)
         else:
             # Enable preview and download buttons
             self._set_button_enabled(self.preview_btn)
             self._set_button_enabled(self.download_btn)
+            self._set_button_enabled(self.cancel_btn)
+            self._set_button_enabled(self.add_tracking_btn)
+            self._set_button_enabled(self.export_btn)
             # Disable stop button (sunken/muted)
             self._set_button_sunken(self.stop_btn)
+            self.enable_retry_button(self._retry_restore)
+            self._set_filter_controls_state(True)
+            self._hide_overlay()
             self.show_progress(False)
     
     def _set_button_disabled(self, button: tk.Button) -> None:
@@ -840,6 +1132,7 @@ class PreviewPanel(ttk.Frame):
         Args:
             enable: True to enable (raised/prominent), False to disable (sunken/muted)
         """
+        self._retry_enabled = enable
         if enable:
             self._set_button_raised(self.retry_btn)
         else:
@@ -848,19 +1141,21 @@ class PreviewPanel(ttk.Frame):
     def get_failed_declarations(self) -> List[str]:
         """
         Get list of declaration numbers that have failed (error tag).
-        
+
         Returns:
             List of declaration numbers with error status
         """
         failed = []
         for item in self.preview_tree.get_children():
+            values = self.preview_tree.item(item, "values")
+            if not values:
+                continue
+            result_value = values[8] if len(values) > 8 else ""
             tags = self.preview_tree.item(item, "tags")
-            if 'error' in tags:
-                values = self.preview_tree.item(item, "values")
-                if values:
-                    failed.append(values[1])  # declaration_number (index 1 after STT)
+            if result_value == "✘" or 'error_result' in tags or 'error' in tags:
+                failed.append(values[1])
         return failed
-    
+
     def clear(self) -> None:
         """Clear all items from preview."""
         for item in self.preview_tree.get_children():

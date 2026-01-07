@@ -3,6 +3,7 @@ Update checker for GitHub releases.
 """
 
 import logging
+import os
 from typing import Optional, List
 
 from update.models import UpdateInfo
@@ -126,6 +127,7 @@ class UpdateChecker:
             assets = data.get('assets', [])
             download_url = ''
             file_size = 0
+            download_name = ''
             
             # First pass: look for .zip file
             for asset in assets:
@@ -133,6 +135,7 @@ class UpdateChecker:
                 if name.endswith('.zip'):
                     download_url = asset.get('browser_download_url', '')
                     file_size = asset.get('size', 0)
+                    download_name = name
                     break
             
             # Second pass: look for .exe if no .zip found
@@ -142,11 +145,34 @@ class UpdateChecker:
                     if name.endswith('.exe'):
                         download_url = asset.get('browser_download_url', '')
                         file_size = asset.get('size', 0)
+                        download_name = name
                         break
             
             if not download_url:
                 logger.warning("No .zip or .exe asset found in release")
                 return None
+
+            checksum_url = ''
+            if download_name:
+                candidates = [f"{download_name}.sha256"]
+                stem, _ = os.path.splitext(download_name)
+                if stem:
+                    candidates.append(f"{stem}.sha256")
+
+                for asset in assets:
+                    name = asset.get('name', '')
+                    if name in candidates:
+                        checksum_url = asset.get('browser_download_url', '')
+                        break
+
+                if not checksum_url:
+                    for asset in assets:
+                        name = asset.get('name', '')
+                        if not name.endswith('.sha256'):
+                            continue
+                        if download_name in name or (stem and stem in name):
+                            checksum_url = asset.get('browser_download_url', '')
+                            break
             
             return UpdateInfo(
                 current_version=self.current_version,
@@ -154,7 +180,8 @@ class UpdateChecker:
                 release_notes=release_notes,
                 download_url=download_url,
                 file_size=file_size,
-                release_date=published_at
+                release_date=published_at,
+                checksum_url=checksum_url
             )
             
         except Exception as e:

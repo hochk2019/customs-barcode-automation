@@ -14,6 +14,7 @@ class UpdateInfo:
     download_url: str
     file_size: int
     release_date: str
+    checksum_url: str = ""
 
 
 @dataclass
