@@ -22,3 +22,10 @@
 
 - [x] Wire on_download_complete callback after batch download to update statistics.
 - [x] Add test for download completion callback in EnhancedManualPanel.
+
+
+- [x] Dọn dẹp cache/test artifacts.
+- [x] Bump version v1.5.3 và cập nhật hướng dẫn nhanh.
+- [x] Cập nhật CHANGELOG cho v1.5.3.
+- [x] Commit và push lên GitHub.
+- [x] Tạo source zip v1.5.3 và build release exe/zip.
