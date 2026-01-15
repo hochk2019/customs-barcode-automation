@@ -48,7 +48,7 @@ def test_filename_generation(sample_declaration):
     file_manager = FileManager('/tmp/output')
     filename = file_manager.generate_filename(sample_declaration)
     
-    expected = '2300782217_308010891440.pdf'
+    expected = 'MV_2300782217_308010891440.pdf'
     assert filename == expected
     assert filename.endswith('.pdf')
     assert '_' in filename
@@ -74,7 +74,7 @@ def test_filename_generation_with_special_characters():
     file_manager = FileManager('/tmp/output')
     filename = file_manager.generate_filename(declaration)
     
-    expected = '0700798384_ABC123XYZ789.pdf'
+    expected = 'MV_0700798384_ABC123XYZ789.pdf'
     assert filename == expected
 
 
@@ -87,7 +87,7 @@ def test_get_file_path(sample_declaration, temp_directory):
     file_manager = FileManager(temp_directory)
     file_path = file_manager.get_file_path(sample_declaration)
     
-    expected_filename = '2300782217_308010891440.pdf'
+    expected_filename = 'MV_2300782217_308010891440.pdf'
     expected_path = os.path.join(temp_directory, expected_filename)
     
     assert file_path == expected_path

@@ -37,13 +37,12 @@ def declaration_strategy(draw):
 def test_property_barcode_retrieval_fallback_chain(declaration):
     """
     For any eligible CustomsDeclaration, when attempting barcode retrieval,
-    the system should try primary website first (Oracle ADF - most reliable),
-    then API, then backup website, in that order.
+    the system should try API first (fastest),
+    then primary website, then backup website, in that order.
     
     **Validates: Requirements 4.1, 4.2, 4.3**
     
-    Note: Order changed Dec 2024 - primary website is now tried first as it's
-    more reliable than the API.
+    Note: Order changed to API-first for speed, then web fallback.
     """
     # Create config
     config = BarcodeServiceConfig(
@@ -85,9 +84,9 @@ def test_property_barcode_retrieval_fallback_chain(declaration):
     # Attempt retrieval
     result = retriever.retrieve_barcode(declaration)
     
-    # Verify fallback chain order: primary -> api -> backup
-    assert call_order == ['primary', 'api', 'backup'], \
-        f"Expected fallback order ['primary', 'api', 'backup'], but got {call_order}"
+    # Verify fallback chain order: api -> primary -> backup
+    assert call_order == ['api', 'primary', 'backup'], \
+        f"Expected fallback order ['api', 'primary', 'backup'], but got {call_order}"
     
     # Result should be None since all methods failed
     assert result is None, "Expected None when all methods fail"

@@ -207,10 +207,28 @@ class DatabaseConfigDialog:
     
     def _load_current_config(self) -> None:
         """Load current configuration into form."""
-        self.server_var.set(self.config_manager.get('ECUS5', 'server', fallback=''))
-        self.database_var.set(self.config_manager.get('ECUS5', 'database', fallback=''))
-        self.username_var.set(self.config_manager.get('ECUS5', 'username', fallback=''))
-        self.password_var.set(self.config_manager.get('ECUS5', 'password', fallback=''))
+        try:
+            db_config = self.config_manager.get_database_config()
+            self.server_var.set(db_config.server or '')
+            self.database_var.set(db_config.database or '')
+            self.username_var.set(db_config.username or '')
+            self.password_var.set(db_config.password or '')
+        except Exception:
+            server = self.config_manager.get('Database', 'server', fallback='')
+            database = self.config_manager.get('Database', 'database', fallback='')
+            username = self.config_manager.get('Database', 'username', fallback='')
+            password = self.config_manager.get('Database', 'password', fallback='')
+            if not server and not database and not username:
+                server = self.config_manager.get('ECUS5', 'server', fallback='')
+                database = self.config_manager.get('ECUS5', 'database', fallback='')
+                username = self.config_manager.get('ECUS5', 'username', fallback='')
+                password = self.config_manager.get('ECUS5', 'password', fallback='')
+            if password.startswith('gAAAAA'):
+                password = self.config_manager._decrypt_password(password)
+            self.server_var.set(server)
+            self.database_var.set(database)
+            self.username_var.set(username)
+            self.password_var.set(password)
         
         # Get driver from config, fallback to first available driver
         saved_driver = self.config_manager.get('ECUS5', 'driver', fallback='')
@@ -303,10 +321,12 @@ class DatabaseConfigDialog:
     def _save_and_reconnect(self) -> None:
         """Save settings and reconnect."""
         # Save to config
-        self.config_manager.set('ECUS5', 'server', self.server_var.get())
-        self.config_manager.set('ECUS5', 'database', self.database_var.get())
-        self.config_manager.set('ECUS5', 'username', self.username_var.get())
-        self.config_manager.set('ECUS5', 'password', self.password_var.get())
+        self.config_manager.set_database_config(
+            self.server_var.get(),
+            self.database_var.get(),
+            self.username_var.get(),
+            self.password_var.get()
+        )
         self.config_manager.set('ECUS5', 'driver', self.driver_var.get())
         self.config_manager.save()
         

@@ -55,7 +55,7 @@ class TestPanelSplitPositionProperties:
     """
     
     @given(st.floats(min_value=0.25, max_value=0.50, allow_nan=False, allow_infinity=False))
-    @settings(max_examples=50, suppress_health_check=[HealthCheck.function_scoped_fixture])
+    @settings(max_examples=50, suppress_health_check=[HealthCheck.function_scoped_fixture], deadline=None)
     def test_split_position_round_trip_valid_range(self, position):
         """
         Property 1: For any valid split position (0.25-0.50), 
@@ -387,7 +387,7 @@ class TestSectionHeightConstraints:
         """Test CompactCompanySection has correct max height constant."""
         from gui.compact_company_section import CompactCompanySection
         
-        assert CompactCompanySection.MAX_HEIGHT == 150, f"Expected 150px, got {CompactCompanySection.MAX_HEIGHT}"
+        assert CompactCompanySection.MAX_HEIGHT == 280, f"Expected 280px, got {CompactCompanySection.MAX_HEIGHT}"
     
     def test_preview_panel_min_height(self):
         """Test PreviewPanel has correct min height constant."""

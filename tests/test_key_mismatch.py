@@ -31,7 +31,8 @@ class TestKeyMismatch(unittest.TestCase):
         # Mock retrieve_barcode to return success
         self.barcode_retriever.retrieve_barcode.return_value = MagicMock(success=True, content=b'pdf')
 
-    def test_execute_direct_download_with_declaration_date_key(self):
+    @patch('gui.enhanced_manual_panel.EnhancedManualPanel.perform_download')
+    def test_execute_direct_download_with_declaration_date_key(self, mock_perform):
         """Test with 'declaration_date' key (from customs_gui.py)"""
         data = [{
             'declaration_number': '100',
@@ -47,12 +48,7 @@ class TestKeyMismatch(unittest.TestCase):
             self.fail(f"KeyError raised: {e}")
             
         # Verify perform_download was called with correct object
-        # Note: execute_direct_download calls perform_download(declarations)
-        # But perform_download runs in a thread. 
-        # We need to wait or mock perform_download?
-        # execute_direct_download calls it directly?
-        # Line 3239: self.perform_download(declarations)
-        # So we can mock perform_download on the instance.
+        # perform_download is mocked to avoid side effects in unit test
         
     @patch('gui.enhanced_manual_panel.EnhancedManualPanel.perform_download')
     def test_perform_download_called_correctly(self, mock_perform):

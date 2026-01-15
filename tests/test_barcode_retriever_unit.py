@@ -148,42 +148,30 @@ class TestBarcodeRetriever:
             assert self.mock_logger.error.called
     
     def test_fallback_logic_api_success(self):
-        """Test that fallback stops when primary website succeeds (called first)
-        
-        Note: Order changed Dec 2024 - primary website is now tried first as it's
-        more reliable than the API.
-        """
+        """Test that fallback stops when API succeeds (called first)"""
         pdf_content = b'%PDF-1.4 mock pdf'
         
-        # Primary website is called first, so we mock _try_web_scraping to succeed
-        with patch.object(self.retriever, '_try_web_scraping', return_value=pdf_content):
-            with patch.object(self.retriever, '_try_api') as mock_api:
+        # API is called first, so we mock _try_api to succeed
+        with patch.object(self.retriever, '_try_api', return_value=pdf_content):
+            with patch.object(self.retriever, '_try_web_scraping') as mock_web:
                 result = self.retriever.retrieve_barcode(self.test_declaration)
                 
                 assert result == pdf_content
-                # API should not be called since primary succeeded
-                assert not mock_api.called
+                # Web scraping should not be called since API succeeded
+                assert not mock_web.called
     
     def test_fallback_logic_api_fails_primary_succeeds(self):
-        """Test fallback to API when primary website fails
-        
-        Note: Order changed Dec 2024 - primary website is now tried first,
-        then API, then backup.
-        """
+        """Test fallback to primary website when API fails"""
         pdf_content = b'%PDF-1.4 mock pdf'
         
-        with patch.object(self.retriever, '_try_web_scraping', return_value=None):
-            with patch.object(self.retriever, '_try_api', return_value=pdf_content):
+        with patch.object(self.retriever, '_try_api', return_value=None):
+            with patch.object(self.retriever, '_try_web_scraping', return_value=pdf_content):
                 result = self.retriever.retrieve_barcode(self.test_declaration)
                 
                 assert result == pdf_content
     
     def test_fallback_logic_api_and_primary_fail_backup_succeeds(self):
-        """Test fallback to backup website when primary and API fail
-        
-        Note: Order changed Dec 2024 - primary website is now tried first,
-        then API, then backup.
-        """
+        """Test fallback to backup website when API and primary fail"""
         pdf_content = b'%PDF-1.4 mock pdf'
         
         with patch.object(self.retriever, '_try_api', return_value=None):

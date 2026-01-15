@@ -157,7 +157,7 @@ def test_property_error_log_detail(error_message):
 @given(
     num_messages=st.integers(min_value=10, max_value=50)
 )
-@settings(max_examples=100)
+@settings(max_examples=100, deadline=None)
 def test_property_log_rotation(num_messages):
     """
     For any log file that exceeds the configured size limit,

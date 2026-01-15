@@ -158,7 +158,7 @@ class TestDatabaseConnectivityIntegration:
         )
         
         # Add processed declaration
-        file_path = "C:\\TestOutput\\0123456789_123456.pdf"
+        file_path = "C:\\TestOutput\\MV_0123456789_123456.pdf"
         tracking_db.add_processed(declaration, file_path)
         
         # Verify it was added
@@ -207,7 +207,7 @@ class TestFileOperationsIntegration:
         assert os.path.exists(file_path)
         
         # Verify filename format
-        expected_filename = "0123456789_123456.pdf"
+        expected_filename = "MV_0123456789_123456.pdf"
         assert file_path.endswith(expected_filename)
         
         # Verify content
@@ -414,7 +414,7 @@ class TestWorkflowIntegration:
         assert tracking_db.is_processed(eligible[0])
         
         # Verify file exists
-        expected_file = output_dir / "0123456789_123456.pdf"
+        expected_file = output_dir / "MV_0123456789_123456.pdf"
         assert expected_file.exists()
         
         # Get processed IDs for next cycle

@@ -30,8 +30,8 @@ from file_utils.file_manager import FileManager
 @settings(max_examples=100)
 def test_property_filename_format_consistency(tax_code, declaration_number):
     """
-    For any CustomsDeclaration, the generated PDF filename should follow 
-    the format "{TaxCode}_{DeclarationNumber}.pdf".
+    For any CustomsDeclaration, the generated PDF filename should follow
+    the format "MV_{TaxCode}_{DeclarationNumber}.pdf".
     
     **Validates: Requirements 5.1**
     """
@@ -50,8 +50,8 @@ def test_property_filename_format_consistency(tax_code, declaration_number):
     file_manager = FileManager('/tmp/test_output')
     filename = file_manager.generate_filename(declaration)
     
-    # Expected format: TaxCode_DeclarationNumber.pdf
-    expected = f"{tax_code}_{declaration_number}.pdf"
+    # Expected format: MV_TaxCode_DeclarationNumber.pdf
+    expected = f"MV_{tax_code}_{declaration_number}.pdf"
     
     assert filename == expected, \
         f"Filename should be '{expected}', but got '{filename}'"
@@ -63,9 +63,10 @@ def test_property_filename_format_consistency(tax_code, declaration_number):
     assert '_' in filename, \
         f"Filename should contain underscore separator, but got '{filename}'"
     
-    # Verify the filename starts with tax_code
-    assert filename.startswith(tax_code), \
-        f"Filename should start with tax_code '{tax_code}', but got '{filename}'"
+    # Verify the filename starts with MV_{tax_code}
+    expected_prefix = f"MV_{tax_code}"
+    assert filename.startswith(expected_prefix), \
+        f"Filename should start with '{expected_prefix}', but got '{filename}'"
     
     # Verify the filename contains declaration_number
     assert declaration_number in filename, \

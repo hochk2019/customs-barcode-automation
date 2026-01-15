@@ -11,6 +11,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import Optional, Callable, List, Dict, Any
 from datetime import datetime
+import re
 
 from gui.styles import ModernStyles
 from gui.components.tooltip import ToolTip, BUTTON_TOOLTIPS
@@ -92,8 +93,9 @@ class PreviewPanel(ttk.Frame):
         self._declarations: List[Dict[str, Any]] = []
         
         # Filter options
-        self._filter_options = ["Tất cả", "Chưa lấy", "Đã lấy", "Lỗi"]
-        self._current_filter = "Tất cả"
+        self._filter_options = ["Cả TK Nhập & Xuất", "Chỉ TK nhập", "Chỉ TK Xuất"]
+        self._current_filter = self._filter_options[0]
+        self._current_filter_index = 0
         self._sort_column: Optional[str] = None
         self._sort_descending = False
         self._retry_enabled = False
@@ -292,10 +294,11 @@ class PreviewPanel(ttk.Frame):
             textvariable=self.filter_var,
             values=self._filter_options,
             state="readonly",
-            width=12
+            width=22
         )
         self.filter_combo.pack(side=tk.LEFT)
         self.filter_combo.bind("<<ComboboxSelected>>", self._on_filter_change)
+        self.filter_var.trace_add("write", lambda *args: self._on_filter_change())
         
         # Row 3: Preview Treeview (expandable) - Requirement 5.2
         tree_frame = ttk.Frame(self)
@@ -309,7 +312,7 @@ class PreviewPanel(ttk.Frame):
         h_scroll.pack(side=tk.BOTTOM, fill=tk.X)
         
         # Treeview with STT column and additional columns
-        columns = ("stt", "declaration_number", "tax_code", "date", "status", "declaration_type", "bill_of_lading", "invoice_number", "result")
+        columns = ("stt", "declaration_number", "date", "declaration_type", "tax_code", "company", "bill_of_lading", "invoice_number", "status", "result")
         self.preview_tree = ttk.Treeview(
             tree_frame,
             columns=columns,
@@ -326,23 +329,25 @@ class PreviewPanel(ttk.Frame):
         self.preview_tree.heading("#0", text="☐", anchor=tk.W)
         self.preview_tree.heading("stt", text="STT")
         self.preview_tree.heading("declaration_number", text="Số tờ khai")
-        self.preview_tree.heading("tax_code", text="Mã số thuế")
         self.preview_tree.heading("date", text="Ngày")
-        self.preview_tree.heading("status", text="Trạng thái")
         self.preview_tree.heading("declaration_type", text="Loại hình")
+        self.preview_tree.heading("tax_code", text="MST")
+        self.preview_tree.heading("company", text="Công ty")
         self.preview_tree.heading("bill_of_lading", text="Vận đơn")
         self.preview_tree.heading("invoice_number", text="Số hóa đơn")
+        self.preview_tree.heading("status", text="Trạng thái")
         self.preview_tree.heading("result", text="Kết quả")
 
         self._base_heading_text = {
             "stt": "STT",
             "declaration_number": "Số tờ khai",
-            "tax_code": "Mã số thuế",
             "date": "Ngày",
-            "status": "Trạng thái",
             "declaration_type": "Loại hình",
+            "tax_code": "MST",
+            "company": "Công ty",
             "bill_of_lading": "Vận đơn",
             "invoice_number": "Số hóa đơn",
+            "status": "Trạng thái",
             "result": "Kết quả",
         }
         self._column_keys = ("#0",) + tuple(self._base_heading_text.keys())
@@ -355,18 +360,32 @@ class PreviewPanel(ttk.Frame):
         self.preview_tree.column("#0", width=30, stretch=False)
         self.preview_tree.column("stt", width=40, anchor=tk.CENTER)
         self.preview_tree.column("declaration_number", width=130)
-        self.preview_tree.column("tax_code", width=100)
         self.preview_tree.column("date", width=90)
-        self.preview_tree.column("status", width=110)
         self.preview_tree.column("declaration_type", width=80)
+        self.preview_tree.column("tax_code", width=90)
+        self.preview_tree.column("company", width=200)
         self.preview_tree.column("bill_of_lading", width=120)
         self.preview_tree.column("invoice_number", width=100)
+        self.preview_tree.column("status", width=110)
         self.preview_tree.column("result", width=80, anchor=tk.CENTER)
         
         # Configure tags for styling
         ModernStyles.configure_treeview_tags(self.preview_tree)
         
         self.preview_tree.pack(fill=tk.BOTH, expand=True)
+
+        # Column visibility menu (right-click on header)
+        self._column_vars = {col: tk.BooleanVar(value=True) for col in self._base_heading_text}
+        self._column_menu = tk.Menu(self, tearoff=0)
+        for col, label in self._base_heading_text.items():
+            self._column_menu.add_checkbutton(
+                label=label,
+                variable=self._column_vars[col],
+                command=self._on_column_menu_toggle
+            )
+
+        self.preview_tree.bind("<Button-3>", self._on_tree_right_click, add=True)
+        self.preview_tree.bind("<Button-2>", self._on_tree_right_click, add=True)
 
         # Busy overlay (shown during long-running tasks)
         self._overlay_frame = tk.Frame(tree_frame, bg=ModernStyles.BG_SECONDARY)
@@ -615,7 +634,20 @@ class PreviewPanel(ttk.Frame):
     
     def _on_filter_change(self, event=None) -> None:
         """Handle filter dropdown change."""
-        self._current_filter = self.filter_var.get()
+        new_filter = self.filter_var.get().strip()
+        combo_index = self.filter_combo.current() if hasattr(self, "filter_combo") else -1
+        try:
+            index = self._filter_options.index(new_filter)
+        except ValueError:
+            index = -1
+        if combo_index >= 0:
+            index = combo_index
+        if index < 0:
+            index = 0
+        if index == self._current_filter_index and new_filter == self._current_filter:
+            return
+        self._current_filter_index = index
+        self._current_filter = self._filter_options[index]
         self._save_preview_settings()
         self._apply_filter()
 
@@ -625,21 +657,18 @@ class PreviewPanel(ttk.Frame):
             self._render_preview_items([])
             return
 
-        filter_value = self._current_filter
+        filter_index = self._current_filter_index
         filtered = []
         for decl in self._all_declarations:
-            result = str(decl.get('result', '')).strip()
+            decl_num = str(decl.get('declaration_number', '')).strip()
 
-            if filter_value == self._filter_options[0]:
+            if filter_index == 0:
                 filtered.append(decl)
-            elif filter_value == self._filter_options[1]:
-                if result not in ("✔", "✘"):
+            elif filter_index == 1:
+                if decl_num.startswith("10"):
                     filtered.append(decl)
-            elif filter_value == self._filter_options[2]:
-                if result == "✔":
-                    filtered.append(decl)
-            elif filter_value == self._filter_options[3]:
-                if result == "✘":
+            elif filter_index == 2:
+                if decl_num.startswith("30"):
                     filtered.append(decl)
             else:
                 filtered.append(decl)
@@ -647,6 +676,79 @@ class PreviewPanel(ttk.Frame):
         filtered = self._sort_declarations(filtered)
         self._filtered_declarations = filtered
         self._render_preview_items(filtered)
+
+    def _shorten_company_name(self, name: str) -> str:
+        """Shorten company name for display in the preview table."""
+        if not name:
+            return ""
+
+        cleaned = " ".join(str(name).strip().split())
+        original = cleaned
+        if not cleaned:
+            return ""
+
+        cleaned = re.sub(
+            r"\s*[-–—]?\s*\(([^)]*(trách nhiệm hữu hạn|tnhh|cổ phần|ctcp|cp)[^)]*)\)\s*",
+            " ",
+            cleaned,
+            flags=re.IGNORECASE
+        )
+
+        prefix_patterns = [
+            r"CHI\s+NHÁNH",
+            r"TỔNG\s+CÔNG\s+TY",
+            r"CÔNG\s+TY",
+            r"CTY",
+        ]
+        type_patterns = [
+            r"TNHH",
+            r"TRÁCH\s+NHIỆM\s+HỮU\s+HẠN",
+            r"CỔ\s+PHẦN",
+            r"CTCP",
+            r"CP",
+        ]
+
+        def strip_leading(patterns, text):
+            changed = True
+            while changed:
+                changed = False
+                for pat in patterns:
+                    new = re.sub(rf"^\s*{pat}\s+", "", text, flags=re.IGNORECASE)
+                    if new != text:
+                        text = new.strip()
+                        changed = True
+            return text
+
+        cleaned = strip_leading(prefix_patterns, cleaned)
+        cleaned = strip_leading(type_patterns, cleaned)
+        cleaned = re.sub(r"^\s*THƯƠNG\s+MẠI\s*[,\\-]?\s*", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\s*[-–—]\s*\b(CTCP|CP|TNHH|CÔNG\s+TY|CỔ\s+PHẦN)\b\s*", " ", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\s+TẠI\s+.+$", "", cleaned, flags=re.IGNORECASE)
+
+        suffix_patterns = [
+            r"VIỆT\s+NAM",
+            r"VIET\s+NAM",
+            r"VIETNAM",
+            r"VINA",
+            r"HÀ\s+NỘI",
+            r"HA\s+NOI",
+            r"HANOI",
+            r"BẮC\s+NINH",
+            r"BAC\s+NINH",
+        ]
+
+        changed = True
+        while changed:
+            changed = False
+            for pat in suffix_patterns:
+                new = re.sub(rf"\s+{pat}\s*$", "", cleaned, flags=re.IGNORECASE)
+                if new != cleaned:
+                    cleaned = new.strip()
+                    changed = True
+
+        cleaned = re.sub(r"\s{2,}", " ", cleaned).strip(" -,")
+
+        return cleaned or original
 
     def _render_preview_items(self, declarations: List[Dict[str, Any]]) -> None:
         """Render preview items to treeview while preserving selection."""
@@ -676,6 +778,10 @@ class PreviewPanel(ttk.Frame):
             if isinstance(date_str, datetime):
                 date_str = date_str.strftime("%d/%m/%Y")
 
+            company_display = decl.get('company', '')
+            if not company_display:
+                company_display = self._shorten_company_name(str(decl.get('company_name', '')).strip())
+
             item_id = self.preview_tree.insert(
                 "",
                 tk.END,
@@ -683,12 +789,13 @@ class PreviewPanel(ttk.Frame):
                 values=(
                     index + 1,
                     decl.get('declaration_number', ''),
-                    decl.get('tax_code', ''),
                     date_str,
-                    decl.get('status', 'Chua ki?m tra'),
                     decl.get('declaration_type', ''),
+                    decl.get('tax_code', ''),
+                    company_display,
                     decl.get('bill_of_lading', ''),
                     decl.get('invoice_number', ''),
+                    decl.get('status', 'Chua ki?m tra'),
                     decl.get('result', '')
                 ),
                 tags=tuple(tags)
@@ -719,7 +826,14 @@ class PreviewPanel(ttk.Frame):
         self._selected_items = []
         self._select_all_var.set(False)
 
-        self._all_declarations = [dict(decl) for decl in declarations]
+        self._all_declarations = []
+        for decl in declarations:
+            item = dict(decl)
+            company_display = str(item.get("company", "")).strip()
+            if not company_display:
+                company_name = str(item.get("company_name", "")).strip()
+                item["company"] = self._shorten_company_name(company_name) if company_name else ""
+            self._all_declarations.append(item)
         self._declarations = self._all_declarations
         self._filtered_declarations = []
         self._apply_filter()
@@ -742,13 +856,14 @@ class PreviewPanel(ttk.Frame):
 
             data = {
                 'declaration_number': values[1],
-                'tax_code': values[2],
-                'date': values[3],
-                'status': values[4],
-                'declaration_type': values[5],
+                'tax_code': values[4],
+                'company_name': values[5],
+                'date': values[2],
+                'status': values[8],
+                'declaration_type': values[3],
                 'bill_of_lading': values[6] if len(values) > 6 else '',
                 'invoice_number': values[7] if len(values) > 7 else '',
-                'result': values[8] if len(values) > 8 else ''
+                'result': values[9] if len(values) > 9 else ''
             }
             selected_data.append(data)
 
@@ -769,7 +884,7 @@ class PreviewPanel(ttk.Frame):
                 continue
 
             new_values = list(values)
-            new_values[4] = new_status
+            new_values[8] = new_status
 
             tags = list(self.preview_tree.item(item_id, "tags"))
             tags = [t for t in tags if t not in ("success", "error")]
@@ -821,7 +936,7 @@ class PreviewPanel(ttk.Frame):
                 continue
 
             new_values = list(values)
-            new_values[8] = result
+            new_values[9] = result
             self.preview_tree.item(item_id, values=tuple(new_values))
 
             tags = list(self.preview_tree.item(item_id, "tags"))
@@ -864,8 +979,12 @@ class PreviewPanel(ttk.Frame):
         if filter_index < 0 or filter_index >= len(self._filter_options):
             filter_index = 0
 
+        self._current_filter_index = filter_index
         self._current_filter = self._filter_options[filter_index]
-        self.filter_var.set(self._current_filter)
+        try:
+            self.filter_combo.current(filter_index)
+        except tk.TclError:
+            self.filter_var.set(self._current_filter)
 
         sort_column = prefs.get("preview_sort_column", "")
         sort_desc = bool(prefs.get("preview_sort_descending", False))
@@ -885,21 +1004,28 @@ class PreviewPanel(ttk.Frame):
                     except tk.TclError:
                         pass
 
+        display_columns = prefs.get("preview_display_columns", [])
+        if isinstance(display_columns, (list, tuple)):
+            display_columns = [col for col in display_columns if col in self._base_heading_text]
+        else:
+            display_columns = []
+        self._apply_display_columns(display_columns or list(self._base_heading_text.keys()))
+
         self._update_sort_indicator()
         self._apply_filter()
 
     def _save_preview_settings(self) -> None:
         """Persist filter/sort/column width settings to preferences."""
         prefs = self._preferences_service
-        try:
-            filter_index = self._filter_options.index(self._current_filter)
-        except ValueError:
+        filter_index = self._current_filter_index
+        if filter_index < 0 or filter_index >= len(self._filter_options):
             filter_index = 0
 
         prefs.set("preview_filter_index", filter_index)
         prefs.set("preview_sort_column", self._sort_column or "")
         prefs.set("preview_sort_descending", bool(self._sort_descending))
         prefs.set("preview_column_widths", self._get_column_widths())
+        prefs.set("preview_display_columns", self._get_display_columns())
 
     def _get_column_widths(self) -> Dict[str, int]:
         """Collect current treeview column widths."""
@@ -910,6 +1036,61 @@ class PreviewPanel(ttk.Frame):
             except (tk.TclError, ValueError, TypeError):
                 continue
         return widths
+
+    def _get_display_columns(self) -> List[str]:
+        """Collect current display columns (excluding #0)."""
+        if hasattr(self, "_column_vars"):
+            return [
+                col for col in self._base_heading_text.keys()
+                if self._column_vars.get(col) and self._column_vars[col].get()
+            ]
+        try:
+            return list(self.preview_tree.cget("displaycolumns"))
+        except tk.TclError:
+            return list(self._base_heading_text.keys())
+
+    def _apply_display_columns(self, columns: List[str]) -> None:
+        """Apply display columns in defined order and sync menu state."""
+        ordered = [col for col in self._base_heading_text.keys() if col in columns]
+        if not ordered:
+            ordered = list(self._base_heading_text.keys())
+        self._display_columns = ordered
+        self.preview_tree.configure(displaycolumns=ordered)
+
+        if hasattr(self, "_column_vars"):
+            for col in self._base_heading_text.keys():
+                var = self._column_vars.get(col)
+                if var is not None:
+                    var.set(col in ordered)
+
+    def _on_column_menu_toggle(self) -> None:
+        """Handle column visibility toggles from context menu."""
+        visible = [
+            col for col in self._base_heading_text.keys()
+            if self._column_vars.get(col) and self._column_vars[col].get()
+        ]
+        if not visible:
+            for var in self._column_vars.values():
+                var.set(True)
+            visible = list(self._base_heading_text.keys())
+
+        self._apply_display_columns(visible)
+        self._save_preview_settings()
+
+    def _on_tree_right_click(self, event) -> None:
+        """Show column visibility menu when right-clicking on header."""
+        try:
+            region = self.preview_tree.identify_region(event.x, event.y)
+        except tk.TclError:
+            return
+        if region != "heading":
+            return
+        if not hasattr(self, "_column_menu"):
+            return
+        try:
+            self._column_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self._column_menu.grab_release()
 
     def _persist_column_settings(self) -> None:
         """Persist column widths without changing filter/sort state."""
@@ -1150,7 +1331,7 @@ class PreviewPanel(ttk.Frame):
             values = self.preview_tree.item(item, "values")
             if not values:
                 continue
-            result_value = values[8] if len(values) > 8 else ""
+            result_value = values[9] if len(values) > 9 else ""
             tags = self.preview_tree.item(item, "tags")
             if result_value == "✘" or 'error_result' in tags or 'error' in tags:
                 failed.append(values[1])

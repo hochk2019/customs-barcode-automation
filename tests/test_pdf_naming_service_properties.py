@@ -126,7 +126,7 @@ def test_property_filename_contains_declaration_number(declaration_number, tax_c
 def test_property_tax_code_format(declaration_number, tax_code):
     """
     *For any* declaration with tax_code format, the filename should be 
-    {tax_code}_{declaration_number}.pdf
+    MV_{tax_code}_{declaration_number}.pdf
     
     **Feature: v1.1-ui-enhancements, Property 8: PDF Filename Generation**
     **Validates: Requirements 5.3**
@@ -139,7 +139,7 @@ def test_property_tax_code_format(declaration_number, tax_code):
     service = PdfNamingService("tax_code")
     filename = service.generate_filename(declaration)
     
-    expected = f"{tax_code}_{declaration_number}.pdf"
+    expected = f"MV_{tax_code}_{declaration_number}.pdf"
     assert filename == expected, \
         f"Expected '{expected}', got: {filename}"
 
@@ -155,7 +155,7 @@ def test_property_tax_code_format(declaration_number, tax_code):
 def test_property_invoice_format(declaration_number, tax_code, invoice_number):
     """
     *For any* declaration with invoice format and non-empty invoice_number,
-    the filename should be {invoice_number}_{declaration_number}.pdf
+    the filename should be MV_{invoice_number}_{declaration_number}.pdf
     
     **Feature: v1.1-ui-enhancements, Property 8: PDF Filename Generation**
     **Validates: Requirements 5.5**
@@ -169,7 +169,7 @@ def test_property_invoice_format(declaration_number, tax_code, invoice_number):
     service = PdfNamingService("invoice")
     filename = service.generate_filename(declaration)
     
-    expected = f"{invoice_number}_{declaration_number}.pdf"
+    expected = f"MV_{invoice_number}_{declaration_number}.pdf"
     assert filename == expected, \
         f"Expected '{expected}', got: {filename}"
 
@@ -185,7 +185,7 @@ def test_property_invoice_format(declaration_number, tax_code, invoice_number):
 def test_property_bill_of_lading_format(declaration_number, tax_code, bill_of_lading):
     """
     *For any* declaration with bill_of_lading format and non-empty bill_of_lading,
-    the filename should be {bill_of_lading}_{declaration_number}.pdf
+    the filename should be MV_{bill_of_lading}_{declaration_number}.pdf
     
     **Feature: v1.1-ui-enhancements, Property 8: PDF Filename Generation**
     **Validates: Requirements 5.6**
@@ -199,7 +199,7 @@ def test_property_bill_of_lading_format(declaration_number, tax_code, bill_of_la
     service = PdfNamingService("bill_of_lading")
     filename = service.generate_filename(declaration)
     
-    expected = f"{bill_of_lading}_{declaration_number}.pdf"
+    expected = f"MV_{bill_of_lading}_{declaration_number}.pdf"
     assert filename == expected, \
         f"Expected '{expected}', got: {filename}"
 
@@ -229,7 +229,7 @@ def test_property_fallback_invoice_to_tax_code(declaration_number, tax_code):
     service = PdfNamingService("invoice")
     filename = service.generate_filename(declaration)
     
-    expected = f"{tax_code}_{declaration_number}.pdf"
+    expected = f"MV_{tax_code}_{declaration_number}.pdf"
     assert filename == expected, \
         f"Expected fallback to tax_code format '{expected}', got: {filename}"
 
@@ -259,7 +259,7 @@ def test_property_fallback_bill_of_lading_to_tax_code(declaration_number, tax_co
     service = PdfNamingService("bill_of_lading")
     filename = service.generate_filename(declaration)
     
-    expected = f"{tax_code}_{declaration_number}.pdf"
+    expected = f"MV_{tax_code}_{declaration_number}.pdf"
     assert filename == expected, \
         f"Expected fallback to tax_code format '{expected}', got: {filename}"
 
@@ -289,7 +289,7 @@ def test_property_fallback_whitespace_only_to_tax_code(declaration_number, tax_c
     service = PdfNamingService("invoice")
     filename = service.generate_filename(declaration)
     
-    expected = f"{tax_code}_{declaration_number}.pdf"
+    expected = f"MV_{tax_code}_{declaration_number}.pdf"
     assert filename == expected, \
         f"Expected fallback to tax_code format '{expected}', got: {filename}"
 

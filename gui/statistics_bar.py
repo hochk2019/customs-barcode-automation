@@ -155,6 +155,31 @@ class StatisticsBar(ttk.Frame):
         if last_run is not None:
             self._last_run = last_run
             self.last_run_var.set(last_run.strftime("%H:%M:%S %d/%m/%Y"))
+
+    def update_counts(
+        self,
+        processed: Optional[int] = None,
+        retrieved: Optional[int] = None,
+        errors: Optional[int] = None,
+        last_run: Optional[datetime] = None
+    ) -> None:
+        """
+        Backwards-compatible alias for update_stats.
+
+        Args:
+            processed: Number of declarations processed
+            retrieved: Number of barcodes retrieved
+            errors: Number of errors
+            last_run: Last run timestamp (defaults to now if counts provided)
+        """
+        if last_run is None and any(value is not None for value in (processed, retrieved, errors)):
+            last_run = datetime.now()
+        self.update_stats(
+            processed=processed,
+            retrieved=retrieved,
+            errors=errors,
+            last_run=last_run
+        )
     
     def increment_processed(self, count: int = 1) -> None:
         """

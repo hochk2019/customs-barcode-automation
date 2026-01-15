@@ -17,11 +17,11 @@ class Declaration:
     declaration_number: str
     tax_code: str
     declaration_date: datetime
-    customs_office_code: str
-    transport_method: str
-    channel: str  # 'Xanh' or 'Vang'
-    status: str  # 'T' for cleared
-    goods_description: Optional[str]
+    customs_office_code: str = ""
+    transport_method: str = ""
+    channel: str = ""  # 'Xanh' or 'Vang'
+    status: str = ""  # 'T' for cleared
+    goods_description: Optional[str] = None
     # Additional fields for preview display
     status_name: Optional[str] = None  # Trạng thái chi tiết: Nhập mới, Đã phân luồng, Thông quan
     company_name: Optional[str] = None  # Tên công ty (từ bảng DTOKHAIMD)
@@ -32,6 +32,39 @@ class Declaration:
     
     # XNK TC patterns for detection
     XNKTC_PATTERNS = ['#&NKTC', '#&XKTC', '#&GCPTQ']
+
+    def __post_init__(self) -> None:
+        """Normalize declaration_date to datetime when passed as string/date."""
+        if isinstance(self.declaration_date, str):
+            parsed = self._parse_date_string(self.declaration_date)
+            if parsed:
+                self.declaration_date = parsed
+        elif hasattr(self.declaration_date, "year") and not isinstance(self.declaration_date, datetime):
+            # Convert date-like objects to datetime for consistent downstream usage.
+            self.declaration_date = datetime(
+                self.declaration_date.year,
+                self.declaration_date.month,
+                self.declaration_date.day
+            )
+
+    @staticmethod
+    def _parse_date_string(value: str) -> Optional[datetime]:
+        """Parse common declaration date string formats."""
+        if not value:
+            return None
+        raw = value.strip()
+        for fmt in (
+            "%Y-%m-%dT%H:%M:%S",
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d",
+            "%d/%m/%Y",
+            "%Y%m%d",
+        ):
+            try:
+                return datetime.strptime(raw, fmt)
+            except ValueError:
+                continue
+        return None
     
     @property
     def is_xnktc(self) -> bool:

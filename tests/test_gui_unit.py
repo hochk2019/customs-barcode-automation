@@ -321,14 +321,11 @@ class TestGUISimplifiedInterface:
         
         Requirements: 1.1, 1.2
         """
-        # Verify that CustomsAutomationGUI class does not have mode_var, auto_radio, manual_radio attributes
-        # by checking the _create_control_panel method doesn't create them
-        
         # Read the source code to verify mode selection is removed
         import inspect
         from gui.customs_gui import CustomsAutomationGUI
         
-        source = inspect.getsource(CustomsAutomationGUI._create_control_panel)
+        source = inspect.getsource(CustomsAutomationGUI)
         
         # Verify mode selection components are not in the source
         assert "self.mode_var" not in source, "mode_var should be removed from GUI"
@@ -348,7 +345,7 @@ class TestGUISimplifiedInterface:
         import inspect
         from gui.customs_gui import CustomsAutomationGUI
         
-        source = inspect.getsource(CustomsAutomationGUI._create_control_panel)
+        source = inspect.getsource(CustomsAutomationGUI)
         
         # Verify button creation is not in the source
         assert "start_button" not in source, "start_button should be removed from GUI"

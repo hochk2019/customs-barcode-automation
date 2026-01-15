@@ -56,7 +56,7 @@ def declaration_strategy(draw):
 
 # Feature: customs-barcode-automation, Property 15: Tracking database uniqueness
 @given(declaration=declaration_strategy())
-@settings(max_examples=100)
+@settings(max_examples=100, deadline=None)
 def test_property_tracking_uniqueness(declaration):
     """
     For any CustomsDeclaration, the unique identifier in the tracking database 

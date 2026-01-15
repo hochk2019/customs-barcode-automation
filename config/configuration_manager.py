@@ -598,6 +598,14 @@ class ConfigurationManager:
         if not password.startswith('gAAAAA'):
             password = self._encrypt_password(password)
         self.config.set('Database', 'password', password)
+
+        # Keep ECUS5 section in sync for legacy dialogs/config readers.
+        if not self.config.has_section('ECUS5'):
+            self.config.add_section('ECUS5')
+        self.config.set('ECUS5', 'server', server)
+        self.config.set('ECUS5', 'database', database)
+        self.config.set('ECUS5', 'username', username)
+        self.config.set('ECUS5', 'password', password)
         
         # Save to file
         self._save_config_file()

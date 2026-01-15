@@ -162,12 +162,12 @@ class TestSettingsDialogIntegration:
     def test_settings_button_exists_in_gui(self):
         """Test that settings button is added to main GUI"""
         import inspect
-        from gui.customs_gui import CustomsAutomationGUI
+        from gui.compact_status_bar import CompactStatusBar
         
-        source = inspect.getsource(CustomsAutomationGUI._create_control_panel)
+        source = inspect.getsource(CompactStatusBar._create_widgets)
         
         # Verify settings button is created
-        assert "settings_button" in source, "Settings button should be created in control panel"
+        assert "settings_btn" in source, "Settings button should be created in compact status bar"
         assert "Cài đặt" in source, "Settings button should have Vietnamese label"
     
     def test_settings_dialog_method_exists_in_gui(self):

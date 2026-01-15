@@ -1,4 +1,4 @@
-# 🚀 HƯỚNG DẪN SỬ DỤNG NHANH - Customs Barcode Automation v1.5.2
+# 🚀 HƯỚNG DẪN SỬ DỤNG NHANH - Customs Barcode Automation v1.5.3
 
 ## 📋 Bước 1: Chuẩn Bị File Cấu Hình
 
@@ -98,4 +98,4 @@ Bạn có thể thay đổi trong phần **"Thư mục lưu file"** trên giao d
 
 ---
 
-**© 2026 Golden Logistics - Customs Barcode Automation v1.5.2**
+**© 2026 Golden Logistics - Customs Barcode Automation v1.5.3**

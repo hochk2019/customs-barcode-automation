@@ -79,6 +79,7 @@ class PreferencesService:
         "preview_sort_column": {"type": str, "default": ""},
         "preview_sort_descending": {"type": bool, "default": False},
         "preview_column_widths": {"type": dict, "default": {}},
+        "preview_display_columns": {"type": list, "default": []},
     }
     
     def __init__(self, preferences_path: str = "data/preferences.json"):

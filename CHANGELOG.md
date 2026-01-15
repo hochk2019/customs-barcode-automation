@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.5.3] - 2026-01-15
+
+### ✨ Improvements
+
+- Đổi bộ lọc tab "Xem trước tờ khai" thành "Chỉ TK nhập / Chỉ TK Xuất / Cả TK Nhập & Xuất", lọc theo đầu 10/30 và lưu lựa chọn.
+- Bổ sung cột "Công ty" hiển thị tên rút gọn; sắp xếp lại thứ tự cột và cho phép ẩn/hiện cột.
+- Tự động lấy mã vạch ưu tiên API → web chính → web dự phòng; tên file PDF thêm tiền tố `MV_`.
+
+### 🐞 Bug Fixes
+
+- Cấu hình DB: lưu/mã hóa mật khẩu đúng và đồng bộ với cấu hình cũ sau cập nhật.
+- Thống kê panel bên trái cập nhật sau khi tải mã vạch thành công.
+- Lọc danh sách tờ khai cập nhật ngay khi đổi lựa chọn.
+
+---
+
 ## [1.5.2] - 2026-01-06
 
 ### ✅ Improvements

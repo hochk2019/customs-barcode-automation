@@ -185,10 +185,14 @@ class CompactOutputSection(ttk.LabelFrame):
                 break
             result = candidate
         
-        # Add ellipsis if truncated
-        if len(result) < len(path):
+        truncated = len(result) < len(path)
+        if len(result) > max_length:
+            result = result[-max_length:]
+            truncated = True
+
+        if truncated:
             result = "..." + result
-        
+
         return result
     
     def _show_tooltip(self, event) -> None:

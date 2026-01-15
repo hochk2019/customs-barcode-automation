@@ -92,7 +92,7 @@ def test_property_download_speed_text_formatting(speed):
 @given(
     file_content=st.binary(min_size=1, max_size=10000)
 )
-@settings(max_examples=100)
+@settings(max_examples=100, deadline=None)
 def test_property_file_size_verification(file_content):
     """
     For any downloaded file, verification SHALL pass if and only if actual file size

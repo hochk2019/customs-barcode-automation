@@ -1483,6 +1483,8 @@ class EnhancedManualPanel(ttk.Frame):
             finally:
                 # Always restore UI state, even if the background thread errors.
                 self.after(0, lambda: self._show_download_result_popup(success, error, skipped, total))
+                if self.on_download_complete:
+                    self.after(0, lambda sc=success, ec=error: self.on_download_complete(sc, ec))
                 self.after(0, lambda: self._set_state("complete"))
                 if self._external_preview_panel:
                     self.after(0, lambda: self._external_preview_panel.set_downloading_state(False))
@@ -2933,11 +2935,25 @@ class EnhancedManualPanel(ttk.Frame):
         declarations = []
         for data in declarations_data:
             # Create Declaration object
+            decl_date = data.get('date') or data.get('declaration_date')
+            if isinstance(decl_date, str):
+                for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%Y%m%d"):
+                    try:
+                        decl_date = datetime.strptime(decl_date, fmt)
+                        break
+                    except ValueError:
+                        continue
+            if decl_date is None:
+                decl_date = datetime.now()
             decl = Declaration(
                  declaration_number=data['declaration_number'],
                  tax_code=data['tax_code'],
-                 declaration_date=data['date'],
-                 status='P' # Pending
+                 declaration_date=decl_date,
+                 customs_office_code=data.get('customs_office_code') or data.get('customs_code', ''),
+                 transport_method=data.get('transport_method', ''),
+                 channel=data.get('channel', ''),
+                 status=data.get('status', 'P'), # Pending
+                 goods_description=data.get('goods_description')
             )
             declarations.append(decl)
             
@@ -2961,4 +2977,4 @@ class EnhancedManualPanel(ttk.Frame):
              self._external_preview_panel._on_select_all_change() 
              
         # 3. Trigger download logic
-        self.download_selected()
+        self.perform_download(declarations)

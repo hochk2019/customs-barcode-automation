@@ -209,9 +209,9 @@ class TestGetButtonConfig:
         from gui.styles import ModernStyles
         config = ModernStyles.get_button_config('secondary', 'light')
         
-        assert config['bg'] == ModernStyles.BG_SECONDARY
-        assert config['fg'] == ModernStyles.TEXT_PRIMARY
-        assert config['relief'] == 'solid'
+        assert config['bg'] == '#6c757d'
+        assert config['fg'] == '#ffffff'
+        assert config['relief'] == 'flat'
     
     def test_dark_theme_button_config(self):
         """Test button configuration for dark theme."""

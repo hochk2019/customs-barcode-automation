@@ -196,7 +196,7 @@ class BarcodeRetriever:
         V2.0: Supports API, Web, and Auto methods.
         - API: Query SOAP API and render PDF locally (faster)
         - Web: Scrape from pus.customs.gov.vn
-        - Auto: Try API first, fallback to Web
+        - Auto: Try API, then primary web, then backup web
         
         Args:
             declaration: Declaration object
@@ -217,17 +217,29 @@ class BarcodeRetriever:
             return self._try_web_method(declaration)
         
         else:  # AUTO mode
-            # Try API first, then Web as fallback
+            # Try API first, then primary web, then backup web
             if self._should_try_method('api'):
-                pdf_content = self._try_api_method(declaration)
+                pdf_content = self._try_api(declaration)
                 if pdf_content:
+                    self._record_method_success('api')
                     return pdf_content
-            
-            if self._should_try_method('web'):
-                pdf_content = self._try_web_method(declaration)
+                self._record_method_failure('api')
+
+            if self._should_try_method('primary_web'):
+                pdf_content = self._try_web_scraping(self.config.primary_web_url, declaration)
                 if pdf_content:
+                    self._record_method_success('primary_web')
                     return pdf_content
-            
+                self._record_method_failure('primary_web')
+
+            backup_url = getattr(self.config, 'backup_web_url', None)
+            if backup_url and self._should_try_method('backup_web'):
+                pdf_content = self._try_web_scraping(backup_url, declaration)
+                if pdf_content:
+                    self._record_method_success('backup_web')
+                    return pdf_content
+                self._record_method_failure('backup_web')
+
             self.logger.error(f"All retrieval methods failed for {declaration.id}")
             return None
     

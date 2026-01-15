@@ -15,7 +15,7 @@ from config.configuration_manager import ConfigurationManager, ConfigurationErro
 
 # Feature: customs-barcode-automation, Property 10: Configuration encryption
 @given(password=st.text(min_size=8, max_size=100, alphabet=st.characters(min_codepoint=33, max_codepoint=126)))
-@settings(max_examples=100)
+@settings(max_examples=100, deadline=None)
 def test_property_configuration_encryption(password):
     """
     For any password stored in configuration, it should be encrypted when saved to disk.

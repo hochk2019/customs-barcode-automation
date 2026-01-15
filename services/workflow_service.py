@@ -120,6 +120,13 @@ class WorkflowService:
             return WorkflowResult()
         
         self._is_running = True
+
+        if self._cancel_event.is_set():
+            self._emit_event(WorkflowEvent.cancelled())
+            self._cancel_event.clear()
+            self._is_running = False
+            return WorkflowResult()
+
         self._cancel_event.clear()
         
         result = WorkflowResult()

@@ -124,18 +124,22 @@ def test_update_item_result_safety(root):
     preview = PreviewPanel(root)
     
     # Add a mock item to tree
-    item_id = preview.preview_tree.insert("", "end", values=("1", "123456789", "TAX", "Date", "Status", "", "", "", ""))
+    item_id = preview.preview_tree.insert(
+        "",
+        "end",
+        values=("1", "123456789", "Date", "Type", "TAX", "Company", "", "", "Status", "")
+    )
     
     # 1. Update existing item
     preview.update_item_result("123456789", "Success", True)
     values = preview.preview_tree.item(item_id, "values")
-    assert values[8] == "Success"
+    assert values[9] == "Success"
     
     # 2. Safe string comparison (int vs str)
     # The fix ensures str matching
     preview.update_item_result(123456789, "Updated", True)
     values = preview.preview_tree.item(item_id, "values")
-    assert values[8] == "Updated"
+    assert values[9] == "Updated"
     
     # 3. Non-existent item (should not crash)
     try:

@@ -122,6 +122,11 @@ class EcusDataConnector:
             # Test connection
             if self._pool.test_connection():
                 self._last_connection_attempt = datetime.now()
+                # Legacy compatibility: keep a reference to the thread connection
+                try:
+                    self._connection = self._pool.get_connection()
+                except Exception:
+                    self._connection = None
                 self._log('info', "Database connection established successfully")
                 return True
             else:
@@ -135,6 +140,13 @@ class EcusDataConnector:
     
     def disconnect(self) -> None:
         """Close database connection for current thread."""
+        if self._connection:
+            try:
+                self._connection.close()
+            except Exception:
+                pass
+            finally:
+                self._connection = None
         if self._pool:
             try:
                 self._pool.close_thread_connection()
@@ -170,6 +182,14 @@ class EcusDataConnector:
         Returns:
             True if connection is active, False otherwise
         """
+        if self._connection:
+            try:
+                cursor = self._connection.cursor()
+                cursor.execute("SELECT 1")
+                cursor.close()
+                return True
+            except Exception:
+                return False
         if self._pool:
             return self._pool.test_connection()
         return False
@@ -183,9 +203,14 @@ class EcusDataConnector:
         Returns:
             pyodbc.Connection for current thread
         """
+        if self._connection:
+            return self._connection
         if self._pool is None:
             self.connect()
-        return self._pool.get_connection()
+        conn = self._pool.get_connection()
+        if self._connection is None:
+            self._connection = conn
+        return conn
     
     def _ensure_connection(self) -> None:
         """
@@ -606,7 +631,7 @@ class EcusDataConnector:
     
     def __enter__(self):
         """Context manager entry"""
-        self._ensure_connection()
+        self.connect()
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
