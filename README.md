@@ -21,6 +21,12 @@ Hệ thống tự động hóa khai báo hải quan - Ứng dụng Windows tự 
 - **PDF Naming Options**: Tùy chọn đặt tên file PDF theo 3 định dạng: MST_SốTK, SốHĐ_SốTK, SốVĐ_SốTK
 - **Default Unchecked**: Tờ khai mặc định không được chọn khi xem trước, cho phép chọn thủ công
 
+### V1.5.4 New Features (April 2026)
+- **Tự động sửa điều kiện Niêm phong (PDF Auto-Correction)**: Hỗ trợ can thiệp nội dung file PDF khi tờ khai Luồng Xanh/Vàng/Đỏ bị trả về trạng thái "Tờ khai chưa được kiểm tra điều kiện niêm phong", hệ thống tự động đổi chữ thành "Không phải niêm phong" để rút ngắn thời gian chờ của Hải Quan.
+- **Nhận diện tự động Tờ khai Xuất Nhập Khẩu tại chỗ**: Code phân tích số phụ lục và hashtag để bóc tách thông minh các tờ khai Loại `#&NKPTQ` và `#&XKPTQ` để đưa vào danh mục loại trừ nếu Admin cài đặt.
+- **Auto Configuration**: Tự sinh cấu hình `config.ini` cho máy mới trong lần đầu chạy, đi kèm vs bộ file nén Installer cài đặt All-in-one.
+- **Cải tiến Layout UX**: UI/UX được tối ưu thông minh. Đổi slogan nhận diện thương hiệu thành "*Thích thì thuê, không thích cũng thuê*". Cụm cài đặt chức năng lọc (Lọc trạng thái, Sửa niêm phong, Bỏ mã vạch hải quan) được tách rời logic tạo trải nghiệm tinh gọn.
+
 ## System Requirements
 
 - Windows 10 or later
