@@ -90,6 +90,59 @@ class BarcodePdfGenerator:
             if self.logger:
                 self.logger.debug("Using Helvetica font (Vietnamese may not display correctly)")
     
+    def _auto_correct_seal_status(self, ghi_chu: str, info: ContainerDeclarationInfo) -> str:
+        """
+        Auto-correct seal status note based on channel and declaration status.
+        
+        When the barcode is fetched early, the seal note may still be
+        "Tờ khai chưa được kiểm tra điều kiện niêm phong" even though
+        the customs system will update it after 15-20 minutes. This method
+        applies the correction immediately based on known business rules.
+        
+        Args:
+            ghi_chu: Current seal status note from API.
+            info: Declaration info containing channel and status.
+            
+        Returns:
+            Corrected seal status note.
+        """
+        # Only correct the specific unchecked status
+        if ghi_chu != "Tờ khai chưa được kiểm tra điều kiện niêm phong":
+            return ghi_chu
+        
+        try:
+            from config.preferences_service import get_preferences_service
+            prefs = get_preferences_service()
+        except Exception:
+            return ghi_chu
+        
+        luong = (info.luong_to_khai or "").strip().lower()
+        trang_thai = (info.trang_thai_to_khai or "").strip().lower()
+        
+        # Rule 1: Green/Yellow channel + Cleared → "Tờ khai không phải niêm phong"
+        if luong in ("xanh", "vàng", "vang") and "thông quan" in trang_thai:
+            if prefs.auto_correct_seal_green_yellow:
+                if self.logger:
+                    self.logger.info(
+                        f"Auto-corrected seal status for {info.so_to_khai}: "
+                        f"Luồng {info.luong_to_khai}, TT={info.trang_thai_to_khai} "
+                        f"→ 'Tờ khai không phải niêm phong'"
+                    )
+                return "Tờ khai không phải niêm phong"
+        
+        # Rule 2: Red channel + Transfer → "Tờ khai chưa xác nhận niêm phong"
+        if luong in ("đỏ", "do") and "chuyển địa điểm" in trang_thai:
+            if prefs.auto_correct_seal_red:
+                if self.logger:
+                    self.logger.info(
+                        f"Auto-corrected seal status for {info.so_to_khai}: "
+                        f"Luồng {info.luong_to_khai}, TT={info.trang_thai_to_khai} "
+                        f"→ 'Tờ khai chưa xác nhận niêm phong'"
+                    )
+                return "Tờ khai chưa xác nhận niêm phong"
+        
+        return ghi_chu
+    
     def generate_pdf(self, info: ContainerDeclarationInfo) -> Optional[bytes]:
         """
         Generate PDF document from declaration info.
@@ -225,6 +278,7 @@ class BarcodePdfGenerator:
         
         # Sub-title (black text, not red)
         ghi_chu = info.ghi_chu or "Tờ khai không phải niêm phong"
+        ghi_chu = self._auto_correct_seal_status(ghi_chu, info)
         elements.append(Paragraph(ghi_chu, styles['subtitle_black']))
         elements.append(Spacer(1, 10*mm))
         
@@ -696,6 +750,7 @@ class BarcodePdfGenerator:
         
         # Sub-title
         ghi_chu = info.ghi_chu or "Tờ khai không phải niêm phong"
+        ghi_chu = self._auto_correct_seal_status(ghi_chu, info)
         elements.append(Paragraph(ghi_chu, styles['subtitle_black']))
         elements.append(Spacer(1, 8*mm))
         

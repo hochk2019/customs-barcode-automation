@@ -1,10 +1,11 @@
 {
   "include_pending": true,
-  "exclude_xnktc": true,
+  "exclude_xnktc": false,
   "max_companies": 6,
   "selected_companies": [
     "2300782217",
-    "2301158516"
+    "2301158516",
+    "2300944637"
   ],
   "default_date_days": 1,
   "auto_check_enabled": true,
@@ -23,14 +24,29 @@
   "preview_sort_descending": false,
   "preview_column_widths": {
     "#0": 30,
-    "stt": 68,
-    "declaration_number": 158,
-    "tax_code": 129,
-    "date": 119,
-    "status": 139,
-    "declaration_type": 109,
-    "bill_of_lading": 149,
-    "invoice_number": 129,
-    "result": 109
-  }
+    "stt": 39,
+    "declaration_number": 118,
+    "date": 89,
+    "declaration_type": 79,
+    "tax_code": 100,
+    "company": 160,
+    "bill_of_lading": 158,
+    "invoice_number": 138,
+    "status": 147,
+    "result": 81
+  },
+  "preview_display_columns": [
+    "stt",
+    "declaration_number",
+    "date",
+    "declaration_type",
+    "tax_code",
+    "company",
+    "bill_of_lading",
+    "invoice_number",
+    "status",
+    "result"
+  ],
+  "auto_correct_seal_green_yellow": true,
+  "auto_correct_seal_red": true
 }

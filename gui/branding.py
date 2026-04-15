@@ -18,7 +18,7 @@ APP_FULL_NAME = f"{APP_NAME} v{APP_VERSION}"
 COMPANY_NAME = "GOLDEN LOGISTICS"
 COMPANY_NAME_FULL = "Golden Logistics Co.,Ltd"
 COMPANY_SLOGAN = "Chuyên làm thủ tục HQ - Vận chuyển hàng toàn quốc"
-COMPANY_MOTTO = '"Thích thì thuê - Không thích thì chê"'
+COMPANY_MOTTO = '"Thích thì thuê, không thích cũng thuê"'
 
 # Designer Information
 DESIGNER_NAME_HEADER = "Designer: Học HK"  # For header banner only

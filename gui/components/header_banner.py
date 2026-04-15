@@ -99,7 +99,7 @@ class HeaderBanner:
         motto_frame = tk.Frame(left_frame, bg=BRAND_PRIMARY_COLOR)
         motto_frame.pack(side=tk.LEFT, padx=(15, 0), fill=tk.Y)
         
-        motto_lines = ["Thích thì thuê", "Không thích thì chê"]
+        motto_lines = ["Thích thì thuê,", "Không thích cũng thuê"]
         for line in motto_lines:
             tk.Label(
                 motto_frame,

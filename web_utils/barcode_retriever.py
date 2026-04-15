@@ -10,16 +10,31 @@ V2.0 Updates (December 2024):
 - Removed backup_web_url (pus1.customs.gov.vn) due to CAPTCHA
 """
 
+from __future__ import annotations  # PEP 563: Postpone type annotation evaluation
+
 import time
 import requests
 from typing import Optional
 from datetime import datetime
 from enum import Enum
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, WebDriverException
+
+# v1.5.4: Lazy-load selenium - allows app to start even without selenium installed
+# Selenium is only needed for web scraping fallback method
+try:
+    from selenium import webdriver
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    from selenium.common.exceptions import TimeoutException, WebDriverException
+    SELENIUM_AVAILABLE = True
+except ImportError:
+    SELENIUM_AVAILABLE = False
+    webdriver = None
+    By = None
+    WebDriverWait = None
+    EC = None
+    TimeoutException = Exception
+    WebDriverException = Exception
 
 from models.config_models import BarcodeServiceConfig, SelectorCache
 from models.declaration_models import Declaration

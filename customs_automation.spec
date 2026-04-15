@@ -17,12 +17,6 @@ datas = [
 # Collect hidden imports
 hiddenimports = [
     'pyodbc',
-    'selenium',
-    'selenium.webdriver',
-    'selenium.webdriver.chrome',
-    'selenium.webdriver.edge',
-    'selenium.webdriver.common',
-    'selenium.webdriver.support',
     'requests',
     'cryptography',
     'cryptography.fernet',
@@ -100,7 +94,24 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['pytest', 'hypothesis', 'test'],
+    excludes=[
+        # Testing frameworks
+        'pytest', 'hypothesis', 'test', '_pytest',
+        # Scientific / data libraries (not used)
+        'numpy', 'pandas', 'scipy', 'matplotlib',
+        'sklearn', 'statsmodels',
+        # Jupyter / IPython
+        'notebook', 'IPython', 'ipykernel', 'jupyter',
+        # Build tools
+        'setuptools', 'pip', 'wheel', 'distutils',
+        # Unused web frameworks
+        'flask', 'django', 'tornado', 'aiohttp',
+        # Selenium (no longer used for barcode retrieval)
+        'selenium', 'selenium.webdriver',
+        # Other unused
+        'docutils', 'pygments', 'pydoc_data',
+        'lib2to3',
+    ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,

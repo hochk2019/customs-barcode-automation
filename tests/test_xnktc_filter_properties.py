@@ -34,12 +34,12 @@ class TestXNKTCPatternDetectionProperty:
     
     *For any* string value in the SoHSTK field, the `is_xnktc` property SHALL return 
     True if and only if the string contains at least one of the patterns "#&NKTC", 
-    "#&XKTC", or "#&GCPTQ" (case-insensitive).
+    "#&XKTC", "#&GCPTQ", "#&NKPTQ", or "#&XKPTQ" (case-insensitive).
     
     **Validates: Requirements 2.1, 2.2, 2.3, 2.5**
     """
     
-    XNKTC_PATTERNS = ['#&NKTC', '#&XKTC', '#&GCPTQ']
+    XNKTC_PATTERNS = ['#&NKTC', '#&XKTC', '#&GCPTQ', '#&NKPTQ', '#&XKPTQ']
     
     @given(st.text())
     @settings(max_examples=100)
@@ -55,7 +55,7 @@ class TestXNKTCPatternDetectionProperty:
         
         assert declaration.is_xnktc == expected
     
-    @given(st.sampled_from(['#&NKTC', '#&XKTC', '#&GCPTQ']))
+    @given(st.sampled_from(['#&NKTC', '#&XKTC', '#&GCPTQ', '#&NKPTQ', '#&XKPTQ']))
     @settings(max_examples=100)
     def test_is_xnktc_true_for_exact_patterns(self, pattern: str):
         """
@@ -65,7 +65,7 @@ class TestXNKTCPatternDetectionProperty:
         assert declaration.is_xnktc is True
     
     @given(
-        st.sampled_from(['#&NKTC', '#&XKTC', '#&GCPTQ']),
+        st.sampled_from(['#&NKTC', '#&XKTC', '#&GCPTQ', '#&NKPTQ', '#&XKPTQ']),
         st.text(min_size=0, max_size=20),
         st.text(min_size=0, max_size=20)
     )
@@ -79,7 +79,7 @@ class TestXNKTCPatternDetectionProperty:
         assert declaration.is_xnktc is True
     
     @given(
-        st.sampled_from(['#&nktc', '#&xktc', '#&gcptq', '#&Nktc', '#&Xktc', '#&Gcptq'])
+        st.sampled_from(['#&nktc', '#&xktc', '#&gcptq', '#&nkptq', '#&xkptq', '#&Nktc', '#&Xktc', '#&Gcptq', '#&Nkptq', '#&Xkptq'])
     )
     @settings(max_examples=100)
     def test_is_xnktc_case_insensitive(self, pattern: str):
@@ -158,7 +158,7 @@ def declaration_strategy(draw, force_xnktc: bool = None):
         force_xnktc: If True, force XNK TC pattern. If False, force no pattern. 
                      If None, random.
     """
-    XNKTC_PATTERNS = ['#&NKTC', '#&XKTC', '#&GCPTQ']
+    XNKTC_PATTERNS = ['#&NKTC', '#&XKTC', '#&GCPTQ', '#&NKPTQ', '#&XKPTQ']
     
     if force_xnktc is True:
         # Force XNK TC pattern

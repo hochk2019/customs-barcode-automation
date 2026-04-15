@@ -80,6 +80,12 @@ class PreferencesService:
         "preview_sort_descending": {"type": bool, "default": False},
         "preview_column_widths": {"type": dict, "default": {}},
         "preview_display_columns": {"type": list, "default": []},
+
+        # Seal status auto-correction (v1.5.4)
+        # Xanh/Vàng + Thông quan: "chưa kiểm tra NP" → "không phải NP"
+        "auto_correct_seal_green_yellow": {"type": bool, "default": True},
+        # Đỏ + Chuyển ĐDKT: "chưa kiểm tra NP" → "chưa xác nhận NP"
+        "auto_correct_seal_red": {"type": bool, "default": True},
     }
     
     def __init__(self, preferences_path: str = "data/preferences.json"):
@@ -365,6 +371,22 @@ class PreferencesService:
     @api_timeout.setter
     def api_timeout(self, value: int) -> None:
         self.set("api_timeout_seconds", value)
+
+    @property
+    def auto_correct_seal_green_yellow(self) -> bool:
+        return self.get("auto_correct_seal_green_yellow")
+    
+    @auto_correct_seal_green_yellow.setter
+    def auto_correct_seal_green_yellow(self, value: bool) -> None:
+        self.set("auto_correct_seal_green_yellow", value)
+
+    @property
+    def auto_correct_seal_red(self) -> bool:
+        return self.get("auto_correct_seal_red")
+    
+    @auto_correct_seal_red.setter
+    def auto_correct_seal_red(self, value: bool) -> None:
+        self.set("auto_correct_seal_red", value)
 
 
 # Global instance with lazy initialization

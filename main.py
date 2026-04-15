@@ -78,9 +78,31 @@ def main():
         config_path = "config.ini"
         
         if not os.path.exists(config_path):
-            print(f"ERROR: Configuration file not found: {config_path}")
-            print("Please create a config.ini file based on config.ini.sample")
-            sys.exit(1)
+            # v1.5.4: Auto-create config.ini from sample for first-time users
+            sample_candidates = [
+                os.path.join(os.path.dirname(config_path), 'config.ini.sample'),
+            ]
+            # PyInstaller frozen mode: check _internal/ and executable directory
+            if getattr(sys, 'frozen', False):
+                exe_dir = os.path.dirname(sys.executable)
+                sample_candidates.insert(0, os.path.join(exe_dir, 'config.ini.sample'))
+                internal_dir = os.path.join(exe_dir, '_internal')
+                sample_candidates.insert(1, os.path.join(internal_dir, 'config.ini.sample'))
+            
+            sample_found = None
+            for candidate in sample_candidates:
+                if os.path.exists(candidate):
+                    sample_found = candidate
+                    break
+            
+            if sample_found:
+                import shutil
+                shutil.copy2(sample_found, config_path)
+                print(f"INFO: Created config.ini from {sample_found}")
+            else:
+                print(f"ERROR: Configuration file not found: {config_path}")
+                print("Please create a config.ini file based on config.ini.sample")
+                sys.exit(1)
         
         try:
             config_manager = ConfigurationManager(config_path)

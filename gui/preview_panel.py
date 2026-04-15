@@ -234,30 +234,13 @@ class PreviewPanel(ttk.Frame):
         # Set initial sunken state
         self._set_button_sunken(self.retry_btn)
         
-        # Row 2: Filter and selection
+        # Row 2: Settings (Filters & Seal options)
         filter_frame = ttk.Frame(self)
-        filter_frame.pack(fill=tk.X, padx=5, pady=(0, 5))
+        filter_frame.pack(fill=tk.X, padx=5, pady=(0, 3))
         
-        # Select all checkbox
-        self.select_all_cb = ttk.Checkbutton(
-            filter_frame,
-            text="Chọn tất cả",
-            variable=self._select_all_var,
-            command=self._on_select_all_change
-        )
-        self.select_all_cb.pack(side=tk.LEFT, padx=(0, 10))
-        
-        # Selection count label
-        self.selection_label = ttk.Label(
-            filter_frame,
-            text="Đã chọn: 0",
-            font=(ModernStyles.FONT_FAMILY, ModernStyles.FONT_SIZE_NORMAL)
-        )
-        self.selection_label.pack(side=tk.LEFT, padx=(0, 15))
-        
-        # Checkbox to include non-cleared declarations (phân luồng nhưng chưa thông quan)
-        # v1.5.0: Load from preferences, default=True
         prefs = get_preferences()
+        
+        # Checkbox to include non-cleared declarations
         self.include_pending_var = tk.BooleanVar(value=prefs.include_pending)
         self.include_pending_checkbox = ttk.Checkbutton(
             filter_frame,
@@ -267,8 +250,7 @@ class PreviewPanel(ttk.Frame):
         )
         self.include_pending_checkbox.pack(side=tk.LEFT, padx=(0, 10))
         
-        # Checkbox to exclude XNK TC declarations (Requirements 1.1, 1.2, 1.5)
-        # v1.5.0: Load from preferences, default=False
+        # Checkbox to exclude XNK TC declarations
         self.exclude_xnktc_var = tk.BooleanVar(value=prefs.exclude_xnktc)
         self.exclude_xnktc_checkbox = ttk.Checkbutton(
             filter_frame,
@@ -278,8 +260,56 @@ class PreviewPanel(ttk.Frame):
         )
         self.exclude_xnktc_checkbox.pack(side=tk.LEFT, padx=(0, 10))
         
-        # Filter dropdown (right side)
-        filter_right = ttk.Frame(filter_frame)
+        # Seal auto-correction options (moved to Row 2)
+        self.seal_label = ttk.Label(
+            filter_frame,
+            text="Sửa điều kiện niêm phong:",
+            font=(ModernStyles.FONT_FAMILY, ModernStyles.FONT_SIZE_NORMAL)
+        )
+        self.seal_label.pack(side=tk.LEFT, padx=(0, 5))
+        ToolTip(self.seal_label, 'Tự động sửa "chưa kiểm tra điều kiện niêm phong" thành "Không phải niêm phong / chưa được niêm phong"', delay=500)
+        
+        self.auto_correct_seal_gy_var = tk.BooleanVar(value=prefs.auto_correct_seal_green_yellow)
+        self.auto_correct_seal_gy_checkbox = ttk.Checkbutton(
+            filter_frame,
+            text="Luồng Xanh/Vàng",
+            variable=self.auto_correct_seal_gy_var,
+            command=self._on_auto_correct_seal_gy_changed
+        )
+        self.auto_correct_seal_gy_checkbox.pack(side=tk.LEFT, padx=(0, 10))
+        
+        self.auto_correct_seal_red_var = tk.BooleanVar(value=prefs.auto_correct_seal_red)
+        self.auto_correct_seal_red_checkbox = ttk.Checkbutton(
+            filter_frame,
+            text="Luồng Đỏ",
+            variable=self.auto_correct_seal_red_var,
+            command=self._on_auto_correct_seal_red_changed
+        )
+        self.auto_correct_seal_red_checkbox.pack(side=tk.LEFT, padx=(0, 10))
+
+        # Row 2b: Selection and Layout Filter
+        selection_frame = ttk.Frame(self)
+        selection_frame.pack(fill=tk.X, padx=5, pady=(0, 5))
+
+        # Select all checkbox
+        self.select_all_cb = ttk.Checkbutton(
+            selection_frame,
+            text="Chọn tất cả",
+            variable=self._select_all_var,
+            command=self._on_select_all_change
+        )
+        self.select_all_cb.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Selection count label
+        self.selection_label = ttk.Label(
+            selection_frame,
+            text="Đã chọn: 0",
+            font=(ModernStyles.FONT_FAMILY, ModernStyles.FONT_SIZE_NORMAL)
+        )
+        self.selection_label.pack(side=tk.LEFT, padx=(0, 15))
+
+        # Filter dropdown (right side of selection frame)
+        filter_right = ttk.Frame(selection_frame)
         filter_right.pack(side=tk.RIGHT)
         
         ttk.Label(
@@ -576,6 +606,16 @@ class PreviewPanel(ttk.Frame):
         
         if self.on_exclude_xnktc_changed:
             self.on_exclude_xnktc_changed(self.exclude_xnktc_var.get())
+    
+    def _on_auto_correct_seal_gy_changed(self) -> None:
+        """Handle auto-correct seal green/yellow checkbox change."""
+        prefs = get_preferences()
+        prefs.auto_correct_seal_green_yellow = self.auto_correct_seal_gy_var.get()
+    
+    def _on_auto_correct_seal_red_changed(self) -> None:
+        """Handle auto-correct seal red checkbox change."""
+        prefs = get_preferences()
+        prefs.auto_correct_seal_red = self.auto_correct_seal_red_var.get()
     
     def _on_select_all_change(self) -> None:
         """Handle select all checkbox change."""
@@ -1207,6 +1247,8 @@ class PreviewPanel(ttk.Frame):
         self.select_all_cb.configure(state=cb_state)
         self.include_pending_checkbox.configure(state=cb_state)
         self.exclude_xnktc_checkbox.configure(state=cb_state)
+        self.auto_correct_seal_gy_checkbox.configure(state=cb_state)
+        self.auto_correct_seal_red_checkbox.configure(state=cb_state)
 
         if enabled:
             self.preview_tree.state(["!disabled"])

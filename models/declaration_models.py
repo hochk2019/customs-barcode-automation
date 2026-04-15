@@ -31,7 +31,7 @@ class Declaration:
     so_hstk: Optional[str] = None  # Số hồ sơ tờ khai - dùng để nhận biết XNK TC
     
     # XNK TC patterns for detection
-    XNKTC_PATTERNS = ['#&NKTC', '#&XKTC', '#&GCPTQ']
+    XNKTC_PATTERNS = ['#&NKTC', '#&XKTC', '#&GCPTQ', '#&NKPTQ', '#&XKPTQ']
 
     def __post_init__(self) -> None:
         """Normalize declaration_date to datetime when passed as string/date."""

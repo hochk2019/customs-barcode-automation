@@ -616,6 +616,26 @@ class EnhancedManualPanel(ttk.Frame):
         )
         self.exclude_xnktc_checkbox.pack(side=tk.LEFT, padx=20)
         
+        # v1.5.4: Seal auto-correction checkboxes
+        _seal_prefs = get_preferences()
+        self.auto_correct_seal_gy_var = tk.BooleanVar(value=_seal_prefs.auto_correct_seal_green_yellow)
+        self.auto_correct_seal_gy_checkbox = ttk.Checkbutton(
+            control_row,
+            text="Sửa NP Xanh/Vàng",
+            variable=self.auto_correct_seal_gy_var,
+            command=self._on_auto_correct_seal_gy_changed
+        )
+        self.auto_correct_seal_gy_checkbox.pack(side=tk.LEFT, padx=10)
+        
+        self.auto_correct_seal_red_var = tk.BooleanVar(value=_seal_prefs.auto_correct_seal_red)
+        self.auto_correct_seal_red_checkbox = ttk.Checkbutton(
+            control_row,
+            text="Sửa NP Đỏ",
+            variable=self.auto_correct_seal_red_var,
+            command=self._on_auto_correct_seal_red_changed
+        )
+        self.auto_correct_seal_red_checkbox.pack(side=tk.LEFT, padx=10)
+        
         # Filter dropdown (Requirements 3.1, 3.2)
         filter_frame = ttk.Frame(control_row)
         filter_frame.pack(side=tk.RIGHT, padx=10)
@@ -2072,6 +2092,16 @@ class EnhancedManualPanel(ttk.Frame):
         # If there's already preview data, refresh it with new filter
         if self.preview_manager._all_declarations:
             self.preview_declarations()
+    
+    def _on_auto_correct_seal_gy_changed(self) -> None:
+        """Handle auto-correct seal green/yellow checkbox change (v1.5.4)."""
+        prefs = get_preferences()
+        prefs.auto_correct_seal_green_yellow = self.auto_correct_seal_gy_var.get()
+    
+    def _on_auto_correct_seal_red_changed(self) -> None:
+        """Handle auto-correct seal red checkbox change (v1.5.4)."""
+        prefs = get_preferences()
+        prefs.auto_correct_seal_red = self.auto_correct_seal_red_var.get()
     
     def _on_filter_changed(self, event=None) -> None:
         """

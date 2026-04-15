@@ -1,0 +1,123 @@
+158 INFO: PyInstaller: 6.17.0, contrib hooks: 2025.10
+158 INFO: Python: 3.13.1
+197 INFO: Platform: Windows-11-10.0.26200-SP0
+197 INFO: Python environment: C:\Users\PC\AppData\Local\Programs\Python\Python313
+5623 INFO: Module search paths (PYTHONPATH):
+['E:\\GPT\\Auto ma vach',
+ 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\python313.zip',
+ 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\DLLs',
+ 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib',
+ 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313',
+ 'C:\\Users\\PC\\AppData\\Roaming\\Python\\Python313\\site-packages',
+ 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages',
+ 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\win32',
+ 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\win32\\lib',
+ 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\Pythonwin',
+ 'E:\\GPT\\Auto ma vach']
+6115 INFO: Appending 'datas' from .spec
+6116 INFO: checking Analysis
+6116 INFO: Building Analysis because Analysis-00.toc is non existent
+6116 INFO: Looking for Python shared library...
+6116 INFO: Using Python shared library: C:\Users\PC\AppData\Local\Programs\Python\Python313\python313.dll
+6116 INFO: Running Analysis Analysis-00.toc
+6116 INFO: Target bytecode optimization level: 0
+6116 INFO: Initializing module dependency graph...
+6118 INFO: Initializing module graph hook caches...
+6134 INFO: Analyzing modules for base_library.zip ...
+7473 INFO: Processing standard module hook 'hook-heapq.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+7562 INFO: Processing standard module hook 'hook-encodings.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+9222 INFO: Processing standard module hook 'hook-pickle.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+10383 INFO: Caching module dependency graph...
+10415 INFO: Analyzing E:\GPT\Auto ma vach\main.py
+10426 INFO: Processing pre-find-module-path hook 'hook-tkinter.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+10427 INFO: TclTkInfo: initializing cached Tcl/Tk info...
+10736 INFO: Processing standard module hook 'hook-_tkinter.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+10798 INFO: Processing standard module hook 'hook-cryptography.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+12053 INFO: hook-cryptography: cryptography does not seem to be using dynamically linked OpenSSL.
+12589 INFO: Processing standard module hook 'hook-pyodbc.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+12708 INFO: Processing standard module hook 'hook-sqlite3.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+13165 INFO: Processing standard module hook 'hook-urllib3.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+13257 INFO: Processing pre-safe-import-module hook 'hook-backports.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+13257 INFO: SetuptoolsInfo: initializing cached setuptools info...
+16347 INFO: Setuptools: 'backports' appears to be a full setuptools-vendored copy - creating alias to 'setuptools._vendor.backports'!
+16357 INFO: Processing pre-safe-import-module hook 'hook-typing_extensions.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+17351 INFO: Processing standard module hook 'hook-charset_normalizer.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+17802 INFO: Processing standard module hook 'hook-certifi.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+17964 INFO: Processing standard module hook 'hook-xml.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+17983 INFO: Processing standard module hook 'hook-xml.etree.cElementTree.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+18097 INFO: Processing standard module hook 'hook-reportlab.lib.utils.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+18135 INFO: Processing standard module hook 'hook-PIL.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+18234 INFO: Processing standard module hook 'hook-PIL.Image.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+18645 INFO: Processing standard module hook 'hook-PIL.ImageFilter.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+19067 INFO: Processing standard module hook 'hook-platform.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+19086 INFO: Processing standard module hook 'hook-_ctypes.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+19187 INFO: Processing standard module hook 'hook-reportlab.pdfbase._fontdata.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+20033 INFO: Processing standard module hook 'hook-difflib.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+20257 INFO: Processing standard module hook 'hook-sysconfig.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+21755 INFO: Processing standard module hook 'hook-xml.dom.domreg.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+22042 INFO: Processing pre-safe-import-module hook 'hook-packaging.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+22129 INFO: Processing standard module hook 'hook-apscheduler.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+22580 INFO: Processing standard module hook 'hook-zoneinfo.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+C:\Users\PC\AppData\Local\Programs\Python\Python313\Lib\site-packages\tkcalendar\calendar_.py:221: SyntaxWarning: invalid escape sequence '\ '
+  font = kw.pop("font", "Liberation\ Sans 9")
+22992 INFO: Processing standard module hook 'hook-babel.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+23348 INFO: Processing standard module hook 'hook-pytz.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+23846 INFO: Analyzing hidden import 'tkinter.scrolledtext'
+23849 INFO: Analyzing hidden import 'database.async_db'
+23852 INFO: Analyzing hidden import 'processors.cache_manager'
+23855 INFO: Analyzing hidden import 'web_utils.api_client'
+23860 INFO: Analyzing hidden import 'web_utils.web_driver_manager'
+23865 INFO: Analyzing hidden import 'gui.controllers.clearance_check_controller'
+23870 INFO: Analyzing hidden import 'gui.controllers.database_status_controller'
+23873 INFO: Analyzing hidden import 'gui.controllers.download_controller'
+23886 INFO: Analyzing hidden import 'gui.controllers.redownload_controller'
+23890 INFO: Analyzing hidden import 'gui.event_handlers_mixin'
+23896 INFO: Processing module hooks (post-graph stage)...
+23941 INFO: Processing standard module hook 'hook-sqlalchemy.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+24556 INFO: Processing pre-safe-import-module hook 'hook-importlib_metadata.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+24557 INFO: Setuptools: 'importlib_metadata' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.importlib_metadata'!
+27893 INFO: Processing standard module hook 'hook-PIL.SpiderImagePlugin.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+27924 INFO: Processing standard module hook 'hook-sqlalchemy.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+28397 WARNING: Hidden import "pysqlite2" not found!
+28397 WARNING: Hidden import "MySQLdb" not found!
+28399 INFO: Processing standard module hook 'hook-psycopg2.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+29240 INFO: Processing standard module hook 'hook-_tkinter.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks'
+29242 WARNING: Hidden import "mx.DateTime" not found!
+29242 INFO: Processing standard module hook 'hook-tzdata.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+29827 INFO: Performing binary vs. data reclassification (3238 entries)
+30071 INFO: Looking for ctypes DLLs
+30089 INFO: Analyzing run-time hooks ...
+30093 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+30095 INFO: Including run-time hook 'pyi_rth_pkgutil.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+30097 INFO: Including run-time hook 'pyi_rth_cryptography_openssl.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\rthooks'
+30098 INFO: Including run-time hook 'pyi_rth__tkinter.py' from 'C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+30166 INFO: Creating base_library.zip...
+30199 INFO: Looking for dynamic libraries
+31846 INFO: Extra DLL search directories (AddDllDirectory): ['C:\\Users\\PC\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\psycopg2_binary.libs']
+31846 INFO: Extra DLL search directories (PATH): []
+32516 INFO: Warnings written to E:\GPT\Auto ma vach\build\customs_automation\warn-customs_automation.txt
+32579 INFO: Graph cross-reference written to E:\GPT\Auto ma vach\build\customs_automation\xref-customs_automation.html
+32658 INFO: checking PYZ
+32658 INFO: Building PYZ because PYZ-00.toc is non existent
+32658 INFO: Building PYZ (ZlibArchive) E:\GPT\Auto ma vach\build\customs_automation\PYZ-00.pyz
+33557 INFO: Building PYZ (ZlibArchive) E:\GPT\Auto ma vach\build\customs_automation\PYZ-00.pyz completed successfully.
+33575 INFO: checking PKG
+33575 INFO: Building PKG because PKG-00.toc is non existent
+33575 INFO: Building PKG (CArchive) CustomsAutomation.pkg
+33599 INFO: Building PKG (CArchive) CustomsAutomation.pkg completed successfully.
+33613 INFO: Bootloader C:\Users\PC\AppData\Local\Programs\Python\Python313\Lib\site-packages\PyInstaller\bootloader\Windows-64bit-intel\run.exe
+33614 INFO: checking EXE
+33614 INFO: Building EXE because EXE-00.toc is non existent
+33614 INFO: Building EXE from EXE-00.toc
+33614 INFO: Copying bootloader EXE to E:\GPT\Auto ma vach\build\customs_automation\CustomsAutomation.exe
+33619 INFO: Copying icon to EXE
+33677 INFO: Copying 0 resources to EXE
+33678 INFO: Embedding manifest in EXE
+33681 INFO: Appending PKG archive to EXE
+33689 INFO: Fixing EXE headers
+33757 INFO: Building EXE from EXE-00.toc completed successfully.
+33782 INFO: checking COLLECT
+33782 INFO: Building COLLECT because COLLECT-00.toc is non existent
+33783 INFO: Building COLLECT COLLECT-00.toc
+38355 INFO: Building COLLECT COLLECT-00.toc completed successfully.
+38400 INFO: Build complete! The results are available in: E:\GPT\Auto ma vach\dist

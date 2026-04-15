@@ -143,6 +143,26 @@ class UserPreferences:
         """Set and save API timeout."""
         self._service.api_timeout = value
 
+    @property
+    def auto_correct_seal_green_yellow(self) -> bool:
+        """Get auto-correct seal status for green/yellow channel."""
+        return self._service.auto_correct_seal_green_yellow
+    
+    @auto_correct_seal_green_yellow.setter
+    def auto_correct_seal_green_yellow(self, value: bool) -> None:
+        """Set and save auto-correct seal status for green/yellow channel."""
+        self._service.auto_correct_seal_green_yellow = value
+
+    @property
+    def auto_correct_seal_red(self) -> bool:
+        """Get auto-correct seal status for red channel."""
+        return self._service.auto_correct_seal_red
+    
+    @auto_correct_seal_red.setter
+    def auto_correct_seal_red(self, value: bool) -> None:
+        """Set and save auto-correct seal status for red channel."""
+        self._service.auto_correct_seal_red = value
+
 
 # Global instance (lazy initialization)
 _preferences: Optional[UserPreferences] = None

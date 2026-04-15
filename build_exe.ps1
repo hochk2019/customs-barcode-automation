@@ -11,7 +11,8 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "PyInstaller not found"
     }
-} catch {
+}
+catch {
     Write-Host "PyInstaller not found. Installing..." -ForegroundColor Yellow
     python -m pip install pyinstaller
     if ($LASTEXITCODE -ne 0) {
@@ -22,7 +23,7 @@ try {
 }
 
 # Clean previous build
-Write-Host "[1/4] Cleaning previous build..." -ForegroundColor Cyan
+Write-Host "[1/5] Cleaning previous build..." -ForegroundColor Cyan
 if (Test-Path "build") {
     Remove-Item -Recurse -Force "build"
 }
@@ -33,8 +34,8 @@ Write-Host "Build directories cleaned" -ForegroundColor Green
 Write-Host ""
 
 # Build executable
-Write-Host "[2/4] Building executable with PyInstaller..." -ForegroundColor Cyan
-python -m PyInstaller customs_automation.spec --clean
+Write-Host "[2/5] Building executable with PyInstaller..." -ForegroundColor Cyan
+python -m PyInstaller customs_automation.spec --noconfirm
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Build failed" -ForegroundColor Red
     Read-Host "Press Enter to exit"
@@ -44,15 +45,13 @@ Write-Host "Build completed successfully" -ForegroundColor Green
 Write-Host ""
 
 # Copy additional files
-Write-Host "[3/4] Copying additional files..." -ForegroundColor Cyan
+Write-Host "[3/5] Copying additional files..." -ForegroundColor Cyan
 Copy-Item "config.ini.sample" "dist\CustomsAutomation\"
 Copy-Item "README.md" "dist\CustomsAutomation\"
 Copy-Item "USER_GUIDE.md" "dist\CustomsAutomation\"
-Copy-Item "DEPLOYMENT.md" "dist\CustomsAutomation\"
-
-# DO NOT create config.ini - only provide config.ini.sample
-# Users should copy config.ini.sample to config.ini and configure it
-Write-Host "Skipping config.ini creation - users will use config.ini.sample" -ForegroundColor Yellow
+if (Test-Path "DEPLOYMENT.md") {
+    Copy-Item "DEPLOYMENT.md" "dist\CustomsAutomation\"
+}
 
 # Create logs directory
 if (-not (Test-Path "dist\CustomsAutomation\logs")) {
@@ -62,29 +61,62 @@ if (-not (Test-Path "dist\CustomsAutomation\logs")) {
 Write-Host "Additional files copied" -ForegroundColor Green
 Write-Host ""
 
-# Create distribution package
-Write-Host "[4/4] Creating distribution package..." -ForegroundColor Cyan
+# Create distribution ZIP (for auto-update)
+Write-Host "[4/5] Creating distribution ZIP (for auto-update)..." -ForegroundColor Cyan
 if (Test-Path "dist\CustomsAutomation.zip") {
     Remove-Item "dist\CustomsAutomation.zip"
 }
 
 # Package the contents directly (not the folder) for proper auto-update
-Write-Host "Creating flat ZIP structure for auto-update compatibility..." -ForegroundColor Cyan
 $currentDir = Get-Location
 Set-Location "dist\CustomsAutomation"
 Compress-Archive -Path "*" -DestinationPath "..\CustomsAutomation.zip" -Force
 Set-Location $currentDir
-Write-Host "Distribution package created: dist\CustomsAutomation.zip" -ForegroundColor Green
+Write-Host "Distribution ZIP created: dist\CustomsAutomation.zip" -ForegroundColor Green
+Write-Host ""
+
+# Build Inno Setup installer
+Write-Host "[5/5] Building installer with Inno Setup..." -ForegroundColor Cyan
+$isccPaths = @(
+    "${env:LOCALAPPDATA}\Programs\Inno Setup 6\ISCC.exe",
+    "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+    "${env:ProgramFiles}\Inno Setup 6\ISCC.exe",
+    "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+    "C:\Program Files\Inno Setup 6\ISCC.exe"
+)
+$isccExe = $null
+foreach ($path in $isccPaths) {
+    if (Test-Path $path) {
+        $isccExe = $path
+        break
+    }
+}
+
+if ($isccExe) {
+    & $isccExe "installer.iss"
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "Installer created successfully!" -ForegroundColor Green
+    }
+    else {
+        Write-Host "WARNING: Inno Setup build failed" -ForegroundColor Yellow
+    }
+}
+else {
+    Write-Host "WARNING: Inno Setup not found. Skipping installer build." -ForegroundColor Yellow
+    Write-Host "  Install from: https://jrsoftware.org/isdl.php" -ForegroundColor Yellow
+}
 Write-Host ""
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "Build Complete!" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "Executable location: dist\CustomsAutomation\CustomsAutomation.exe" -ForegroundColor Cyan
-Write-Host "Distribution package: dist\CustomsAutomation.zip" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "IMPORTANT: WebDriver (chromedriver.exe or msedgedriver.exe) must be" -ForegroundColor Yellow
-Write-Host "placed in the same directory as the executable or in system PATH." -ForegroundColor Yellow
+Write-Host "Outputs:" -ForegroundColor Cyan
+Write-Host "  Executable:   dist\CustomsAutomation\CustomsAutomation.exe" -ForegroundColor White
+Write-Host "  Update ZIP:   dist\CustomsAutomation.zip" -ForegroundColor White
+if (Test-Path "dist\CustomsBarcodeAutomation_Setup_*.exe") {
+    $setupFile = Get-ChildItem "dist\CustomsBarcodeAutomation_Setup_*.exe" | Select-Object -First 1
+    Write-Host "  Installer:    $($setupFile.Name)" -ForegroundColor White
+}
 Write-Host ""
 Read-Host "Press Enter to exit"
